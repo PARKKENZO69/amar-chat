@@ -196,7 +196,8 @@ const $app = document.getElementById('app');
 
 let me = null, profile = null, unsubs = [], callWatchUnsub = null, msgAlertUnsub = null;
 let signingUp = false, presenceTimer = null, presenceCleanup = null, ringingCallId = null, ringTimer = null, pendingCands = [];
-let currentOpenChatId = null, appUnlocked = false;
+let currentOpenChatId = null, currentScreenName = 'home', appUnlocked = false;
+let suppressPopstate = false, customBackHandler = null;
 const notifiedMsgIds = new Set();
 const mutedChatIds = new Set();
 const userProfilesCache = {};
@@ -205,13 +206,11 @@ const EMOJIS = ['😊','😂','❤️','👍','🙏','🔥','😍','😢','😮'
 const REACTIONS = ['👍','❤️','😂','😮','😢','🙏'];
 const WALLPAPER_COLORS = ['#efeae2','#d9e8f5','#fce8d5','#e3f4e8','#eadcf8','#111b21','#1b2832','#251c2b'];
 
-/* STUN servers + TURN slot (alada network/mobile data-r jonno TURN server dile sob network-e cholbe) */
 const RTC_CFG = {
   iceServers: [
     { urls: 'stun:stun.l.google.com:19302' },
     { urls: 'stun:stun1.l.google.com:19302' },
     { urls: 'stun:stun2.l.google.com:19302' }
-    // { urls: 'turn:YOUR_TURN_SERVER:3478', username: 'YOUR_USER', credential: 'YOUR_PASS' }
   ],
   iceCandidatePoolSize: 10
 };
@@ -220,6 +219,7 @@ const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt
 const addSub = fn => { if (typeof fn === 'function') unsubs.push(fn); };
 const stop = () => {
   currentOpenChatId = null;
+  customBackHandler = null;
   unsubs.forEach(fn => { try { fn(); } catch (e) {} });
   unsubs = [];
 };
@@ -239,6 +239,57 @@ const safeDoc = u => (typeof u === 'string' && DOC_OK.test(u)) ? u : '';
 const isOnline = p => !!(p && p.online && p.lastSeen && p.lastSeen.toMillis && (Date.now() - p.lastSeen.toMillis() < 120000));
 const isTyping = v => typeof v === 'number' && v > 0 && (Date.now() - v) < 6000;
 const tsMs = ts => ts && ts.toMillis ? ts.toMillis() : (typeof ts === 'number' ? ts : 0);
+
+function ensureRootHistoryAnchor() {
+  try {
+    if (!history.state || !history.state.amarRoot) {
+      history.replaceState({ amarRoot: true }, '', location.href);
+    }
+  } catch (e) {}
+}
+
+function pushSubScreenHistory(screenTag) {
+  ensureRootHistoryAnchor();
+  try {
+    if (!history.state || history.state.amarScreen !== screenTag) {
+      history.pushState({ amarRoot: true, amarScreen: screenTag }, '', location.href);
+    }
+  } catch (e) {}
+}
+
+function goToChatList() {
+  if (typeof home === 'function') home('chats', false);
+}
+
+window.addEventListener('popstate', () => {
+  if (suppressPopstate) return;
+
+  const lb = document.querySelector('.lbox');
+  if (lb) {
+    lb.remove();
+    ensureRootHistoryAnchor();
+    return;
+  }
+  const modal = document.querySelector('.modal');
+  if (modal) {
+    const cl = modal.querySelector('button[id$="cl"]');
+    if (cl) cl.click();
+    else modal.remove();
+    ensureRootHistoryAnchor();
+    return;
+  }
+  if (typeof customBackHandler === 'function') {
+    const handled = customBackHandler();
+    if (handled) {
+      ensureRootHistoryAnchor();
+      return;
+    }
+  }
+  if (currentScreenName !== 'home' && me) {
+    goToChatList();
+    ensureRootHistoryAnchor();
+  }
+});
 
 function applyTheme() {
   document.body.classList.toggle('dark', isDarkMode());
@@ -287,6 +338,7 @@ function openLightbox(src, caption = '', textOnly = false, extraHtml = '') {
 /* ---------- PIN LOCK SCREEN ---------- */
 function pinLockView(onSuccess) {
   stop();
+  currentScreenName = 'pin';
   applyTheme();
   $app.innerHTML = `
     <div class="auth">
@@ -971,6 +1023,7 @@ function gate() {
 /* ---------- EMAIL VERIFY ---------- */
 function verifyView(msg = '', good = false) {
   stop();
+  currentScreenName = 'verify';
   applyTheme();
   $app.innerHTML = `
     <div class="auth">
@@ -1032,6 +1085,7 @@ async function claimUsername(username, name) {
 
 /* ---------- LOGIN / SIGNUP + PASSWORD RESET ---------- */
 function authView(isLogin, err = '', okMsg = '', prefEmail = '') {
+  currentScreenName = 'auth';
   let friendlyErr = err;
   if (err && (err.includes('INVALID_LOGIN_CREDENTIALS') || err.includes('invalid-credential') || err.includes('wrong-password'))) {
     friendlyErr = 'Email ba Password vul ache. Abar check korun ba "Password bhule gechen?" chapun.';
@@ -1113,6 +1167,7 @@ function authView(isLogin, err = '', okMsg = '', prefEmail = '') {
 /* ---------- USERNAME SETUP ---------- */
 function usernameSetup(err = '') {
   stop();
+  currentScreenName = 'username';
   $app.innerHTML = `
     <div class="auth">
       <h1>Username thik korun</h1>
@@ -1148,6 +1203,8 @@ function usernameSetup(err = '') {
 /* ---------- PROFILE, DARK MODE, PRIVACY, PIN LOCK & ACCOUNT SECURITY ---------- */
 function profileView() {
   stop();
+  currentScreenName = 'profile';
+  pushSubScreenHistory('profile');
   applyTheme();
   let newPhoto = profile.photo || '';
   const lsOn = showLastSeenPref();
@@ -1275,6 +1332,8 @@ function profileView() {
 /* ---------- STARRED MESSAGES VIEW ---------- */
 function starredView() {
   stop();
+  currentScreenName = 'starred';
+  pushSubScreenHistory('starred');
   applyTheme();
   const starred = myStarred();
   $app.innerHTML = `
@@ -1428,6 +1487,8 @@ function otherUid(c) {
 
 function home(activeTab = 'chats', showArchived = false) {
   stop();
+  currentScreenName = 'home';
+  ensureRootHistoryAnchor();
   applyTheme();
   let allChats = [];
   let presMap = {};
@@ -1710,6 +1771,8 @@ function home(activeTab = 'chats', showArchived = false) {
 /* ---------- NOTUN CHAT ---------- */
 function newChat() {
   stop();
+  currentScreenName = 'newchat';
+  pushSubScreenHistory('newchat');
   $app.innerHTML = `
     <header><button id="bk">←</button>Notun chat</header>
     <div class="pad">
@@ -1749,6 +1812,8 @@ async function openOneToOne(u) {
 /* ---------- NOTUN GROUP ---------- */
 function newGroup() {
   stop();
+  currentScreenName = 'newgroup';
+  pushSubScreenHistory('newgroup');
   const added = {};
   $app.innerHTML = `
     <header><button id="bk">←</button>Notun group</header>
@@ -1807,6 +1872,8 @@ function newGroup() {
 /* ---------- GROUP ADMIN, CO-ADMIN & DESCRIPTION ---------- */
 function groupInfoView(chatId) {
   stop();
+  currentScreenName = 'groupinfo';
+  pushSubScreenHistory('groupinfo');
   $app.innerHTML = `
     <header><button id="bk">←</button>Group Info</header>
     <div class="pad" id="gbody"><div class="empty">Loading...</div></div>`;
@@ -2140,6 +2207,8 @@ async function uploadMedia(chatId, blobOrFile, ext, fallbackDataUrl, isDoc = fal
 /* ---------- CHAT SCREEN ---------- */
 function chatView(chatId, title, peerUid = null) {
   stop();
+  currentScreenName = 'chat';
+  pushSubScreenHistory('chat:' + chatId);
   applyTheme();
   currentOpenChatId = chatId;
   ensureNotifPermission();
@@ -2225,6 +2294,31 @@ function chatView(chatId, title, peerUid = null) {
     discardRec = true;
     if (rec && rec.state !== 'inactive') { try { rec.stop(); } catch (e) {} }
     cleanupRec();
+  };
+
+  customBackHandler = () => {
+    if (selectedIds.size > 0) {
+      selectedIds.clear();
+      renderHeaderState();
+      renderMessages();
+      return true;
+    }
+    if (replyTarget) {
+      clearReply();
+      return true;
+    }
+    if (rec && rec.state !== 'inactive') {
+      cancelRec();
+      return true;
+    }
+    if (ep.classList.contains('on')) {
+      ep.classList.remove('on');
+      return true;
+    }
+    clearTimeout(typingTimeout);
+    setTyping(false);
+    home('chats', false);
+    return true;
   };
 
   function setTyping(val) {
