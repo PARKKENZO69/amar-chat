@@ -204,11 +204,14 @@ const userProfilesCache = {};
 const EMOJIS = ['😊','😂','❤️','👍','🙏','🔥','😍','😢','😮','🎉','👏','😎','💯','🤔','🥳','💔','🌹','☀️','✨','🙌'];
 const REACTIONS = ['👍','❤️','😂','😮','😢','🙏'];
 const WALLPAPER_COLORS = ['#efeae2','#d9e8f5','#fce8d5','#e3f4e8','#eadcf8','#111b21','#1b2832','#251c2b'];
+
+/* STUN servers + TURN slot (alada network/mobile data-r jonno TURN server dile sob network-e cholbe) */
 const RTC_CFG = {
   iceServers: [
     { urls: 'stun:stun.l.google.com:19302' },
     { urls: 'stun:stun1.l.google.com:19302' },
     { urls: 'stun:stun2.l.google.com:19302' }
+    // { urls: 'turn:YOUR_TURN_SERVER:3478', username: 'YOUR_USER', credential: 'YOUR_PASS' }
   ],
   iceCandidatePoolSize: 10
 };
@@ -422,19 +425,35 @@ const $remA = document.getElementById('remA');
 const $locV = document.getElementById('locV');
 const $cacts = document.getElementById('cacts');
 
-function unlockRemoteMediaPlayback() {
-  $remA.muted = false;
-  $remA.volume = 1.0;
-  $remA.play().catch(() => {});
-  if (callIsVideo) {
-    $remV.muted = false;
-    $remV.volume = 1.0;
-    $remV.play().catch(() => {});
+function syncMediaElements() {
+  if (remoteStream) {
+    if ($remA.srcObject !== remoteStream) $remA.srcObject = remoteStream;
+    $remA.muted = false;
+    $remA.volume = 1.0;
+    $remA.play().catch(() => {});
+
+    const hasVideo = remoteStream.getVideoTracks().some(t => t.readyState === 'live') || remoteStream.getVideoTracks().length > 0 || callIsVideo;
+    if (hasVideo) {
+      callIsVideo = true;
+      $cav.style.display = 'none';
+      $remV.style.display = 'block';
+      $locV.style.display = 'block';
+      if ($remV.srcObject !== remoteStream) $remV.srcObject = remoteStream;
+      $remV.muted = false;
+      $remV.volume = 1.0;
+      $remV.play().catch(() => {});
+    }
+  }
+  if (localStream && callIsVideo) {
+    $locV.style.display = 'block';
+    if ($locV.srcObject !== localStream) $locV.srcObject = localStream;
+    $locV.muted = true;
+    $locV.play().catch(() => {});
   }
 }
 
 $cs.addEventListener('click', e => {
-  if (!e.target.closest('button')) unlockRemoteMediaPlayback();
+  if (!e.target.closest('button')) syncMediaElements();
 });
 
 async function logCallHistory(peerUid, peerName, isVideo, direction, outcome) {
@@ -478,9 +497,7 @@ async function switchCallCamera() {
     localStream.addTrack(newTrack);
     currentFacingMode = nextMode;
     camOff = false;
-    $locV.srcObject = localStream;
-    $locV.muted = true;
-    $locV.play().catch(() => {});
+    syncMediaElements();
     toast(nextMode === 'environment' ? 'Back camera active' : 'Front camera active');
   } catch (e) {
     toast('Camera switch kora jayni: ' + (e.message || ''));
@@ -529,6 +546,7 @@ function showCallUI(peerName, statusText, isVideo, mode) {
     const cflip = document.getElementById('cflip');
     if (cflip) cflip.onclick = switchCallCamera;
     document.getElementById('chang').onclick = () => endCall(true);
+    syncMediaElements();
   }
 }
 
@@ -592,22 +610,13 @@ function attachRemoteTrack(track, stream) {
   } else if (track && !remoteStream.getTracks().some(rt => rt.id === track.id)) {
     remoteStream.addTrack(track);
   }
-
-  $remA.srcObject = remoteStream;
-  $remA.muted = false;
-  $remA.volume = 1.0;
-  $remA.play().catch(() => {});
-
-  const hasVid = (track && track.kind === 'video') || remoteStream.getVideoTracks().length > 0 || callIsVideo;
-  if (hasVid) {
+  if (track && track.kind === 'video') {
     callIsVideo = true;
     $cav.style.display = 'none';
     $remV.style.display = 'block';
-    $remV.srcObject = remoteStream;
-    $remV.muted = false;
-    $remV.volume = 1.0;
-    $remV.play().catch(() => {});
+    $locV.style.display = 'block';
   }
+  syncMediaElements();
 }
 
 async function setupPeer(callDocRef, isCaller, isVideo) {
@@ -622,15 +631,25 @@ async function setupPeer(callDocRef, isCaller, isVideo) {
   $remV.srcObject = remoteStream;
   $remV.muted = false;
 
+  const audioConstraints = {
+    echoCancellation: { ideal: true },
+    noiseSuppression: { ideal: true },
+    autoGainControl: { ideal: false },
+    googEchoCancellation: true,
+    googNoiseSuppression: true,
+    googAutoGainControl: false,
+    googHighpassFilter: true
+  };
+
   try {
     localStream = await navigator.mediaDevices.getUserMedia({
-      audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true },
-      video: isVideo ? { facingMode: 'user', width: { ideal: 640 }, height: { ideal: 480 } } : false
+      audio: audioConstraints,
+      video: isVideo ? { facingMode: { ideal: 'user' }, width: { ideal: 640 }, height: { ideal: 480 } } : false
     });
   } catch (err) {
     if (isVideo) {
       toast('Camera payni, audio call-e chesta korchi...');
-      localStream = await navigator.mediaDevices.getUserMedia({ audio: true, video: false });
+      localStream = await navigator.mediaDevices.getUserMedia({ audio: audioConstraints, video: false });
       isVideo = false;
       callIsVideo = false;
       $cav.style.display = 'flex';
@@ -657,7 +676,7 @@ async function setupPeer(callDocRef, isCaller, isVideo) {
   pc.oniceconnectionstatechange = () => {
     if (!pc) return;
     if (pc.iceConnectionState === 'connected' || pc.iceConnectionState === 'completed') {
-      unlockRemoteMediaPlayback();
+      syncMediaElements();
       const hasVid = (remoteStream && remoteStream.getVideoTracks().length > 0) || callIsVideo;
       $cst.textContent = hasVid ? '📹 Video call connected' : '🔊 Audio call connected';
     } else if (pc.iceConnectionState === 'failed') {
@@ -669,7 +688,7 @@ async function setupPeer(callDocRef, isCaller, isVideo) {
   pc.onconnectionstatechange = () => {
     if (!pc) return;
     if (pc.connectionState === 'connected') {
-      unlockRemoteMediaPlayback();
+      syncMediaElements();
       const hasVid = (remoteStream && remoteStream.getVideoTracks().length > 0) || callIsVideo;
       $cst.textContent = hasVid ? '📹 Video call connected' : '🔊 Audio call connected';
     } else if (pc.connectionState === 'disconnected') {
@@ -753,7 +772,7 @@ async function startCall(peerUid, peerName, isVideo) {
         try {
           await pc.setRemoteDescription(new RTCSessionDescription(d.answer));
           $cst.textContent = 'Connecting...';
-          unlockRemoteMediaPlayback();
+          syncMediaElements();
           await flushCands();
         } catch (e) {
           toast('Answer error: ' + e.message);
@@ -807,7 +826,7 @@ async function acceptCall(callData, callDoc) {
     await flushCands();
     const answer = await pc.createAnswer();
     await pc.setLocalDescription(answer);
-    unlockRemoteMediaPlayback();
+    syncMediaElements();
     await callDoc.update({
       status: 'accepted',
       answer: { type: answer.type, sdp: answer.sdp }
