@@ -1,9 +1,14 @@
 <!doctype html>
-<html lang="bn">
+<html lang="en">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <meta name="theme-color" content="#128c7e">
+<link rel="manifest" href="manifest.json">
+<link rel="icon" href="icon-192.png">
+<link rel="apple-touch-icon" href="icon-192.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
 <title>Amar Chat</title>
 <style>
   :root{--g:#128c7e;--gd:#075e54;--bg:#efeae2;--me:#d9fdd3;--bd:#e5e5e5;--page:#fff;--text:#111;--sub:#666;--card:#fff;--bar:#f0f0f0;--inbg:#fff;--rowact:#f3f3f3}
@@ -159,6 +164,27 @@
   .cbtn.acc{background:#25d366}
   .cbtn.end{background:#e53935}
   .cbtn.off{background:#fff;color:#111}
+
+  /* ---- polish: unread, typing, ticks, date separators ---- */
+  .row .rmeta{display:flex;flex-direction:column;align-items:flex-end;gap:5px;flex:none;min-width:44px}
+  .row .rtm{font-size:11.5px;color:var(--sub)}
+  .row .rtm.un{color:#25d366;font-weight:700}
+  .row.unrd .t{font-weight:800}
+  .row.unrd .s{color:var(--text);font-weight:600}
+  .badge{background:#25d366;color:#fff;border-radius:12px;min-width:22px;height:22px;padding:0 7px;font-size:12px;font-weight:700;display:inline-flex;align-items:center;justify-content:center}
+  .badge.mute{background:#8696a0}
+  .typlbl,.typlbl2{color:#25d366;font-weight:600}
+  .youlbl{color:var(--sub)}
+  .tick{font-size:11px;color:var(--sub);letter-spacing:-2px;margin-left:2px}
+  .tick.seen{color:#34b7f1}
+  .daysep{align-self:center;margin:8px 0 4px}
+  .daysep span{background:#0000001f;color:var(--text);font-size:11.5px;padding:3px 11px;border-radius:12px}
+  body.dark .daysep span{background:#ffffff1f}
+  .tobot{position:absolute;right:14px;bottom:78px;width:40px;height:40px;border-radius:50%;border:0;background:var(--card);color:var(--text);box-shadow:0 2px 8px #0005;font-size:18px;cursor:pointer;z-index:15;display:flex;align-items:center;justify-content:center}
+  .bar textarea{overflow-y:auto}
+  .msgs{scroll-behavior:auto;-webkit-overflow-scrolling:touch;overscroll-behavior:contain}
+  .list{-webkit-overflow-scrolling:touch;overscroll-behavior:contain}
+  button,.row,.b{-webkit-tap-highlight-color:transparent}
 </style>
 </head>
 <body>
@@ -221,25 +247,39 @@ const EMOJIS = ['😊','😂','❤️','👍','🙏','🔥','😍','😢','😮'
 const REACTIONS = ['👍','❤️','😂','😮','😢','🙏'];
 const WALLPAPER_COLORS = ['#efeae2','#d9e8f5','#fce8d5','#e3f4e8','#eadcf8','#111b21','#1b2832','#251c2b'];
 
-/* ---------- LONG-DISTANCE / CROSS-NETWORK CALL (STUN + TURN) ---------- */
-const TURN_SERVERS = [
-  // Long-distance / strict network-e connect na hole ekhane TURN server din:
-  // {
-  //   urls: ['turn:your-turn-server.com:3478', 'turns:your-turn-server.com:5349'],
-  //   username: 'YOUR_TURN_USERNAME',
-  //   credential: 'YOUR_TURN_PASSWORD'
-  // }
+/* ---------- CALLS BETWEEN ANY TWO NETWORKS (STUN + free TURN) ---------- */
+// To let calls work everywhere (WiFi <-> mobile data etc.) you need a TURN server.
+// FREE setup (2 minutes): sign up at https://www.metered.ca , create a TURN app,
+// then paste your "app name" and "API key" below. Leave empty = STUN only.
+const METERED_APP = '';      // example: 'amarchat'   (from https://amarchat.metered.live)
+const METERED_API_KEY = '';  // example: 'a1b2c3...'
+const TURN_SERVERS = [];     // optional: paste your own TURN servers here
+const STUN_SERVERS = [
+  { urls: 'stun:stun.l.google.com:19302' },
+  { urls: 'stun:stun1.l.google.com:19302' },
+  { urls: 'stun:stun2.l.google.com:19302' }
 ];
-
-const RTC_CFG = {
-  iceServers: [
-    { urls: 'stun:stun.l.google.com:19302' },
-    { urls: 'stun:stun1.l.google.com:19302' },
-    { urls: 'stun:stun2.l.google.com:19302' },
-    ...TURN_SERVERS
-  ],
-  iceCandidatePoolSize: 6
-};
+let rtcCfgCache = null, rtcCfgAt = 0;
+async function getRtcCfg() {
+  if (rtcCfgCache && Date.now() - rtcCfgAt < 25 * 60 * 1000) return rtcCfgCache;
+  let ice = [...STUN_SERVERS, ...TURN_SERVERS];
+  if (METERED_APP && METERED_API_KEY) {
+    try {
+      const ctl = new AbortController();
+      const tm = setTimeout(() => ctl.abort(), 4000);
+      const r = await fetch(`https://${METERED_APP}.metered.live/api/v1/turn/credentials?apiKey=${encodeURIComponent(METERED_API_KEY)}`, { signal: ctl.signal });
+      clearTimeout(tm);
+      if (r.ok) {
+        const list = await r.json();
+        if (Array.isArray(list) && list.length) ice = [...STUN_SERVERS, ...TURN_SERVERS, ...list];
+      }
+    } catch (e) {}
+  }
+  rtcCfgCache = { iceServers: ice, iceCandidatePoolSize: 4 };
+  rtcCfgAt = Date.now();
+  return rtcCfgCache;
+}
+setTimeout(() => { getRtcCfg(); }, 2500);
 
 const I18N = {
   banglish: {
@@ -479,8 +519,8 @@ const I18N = {
 };
 
 function currentLang() {
-  const l = profile?.lang || localStorage.getItem('amar_chat_lang') || 'banglish';
-  return I18N[l] ? l : 'banglish';
+  const l = profile?.lang || localStorage.getItem('amar_chat_lang') || 'en';
+  return I18N[l] ? l : 'en';
 }
 
 function tr(key) {
@@ -510,6 +550,23 @@ const MEDIA_OK = /^(data:(image|audio)\/[a-z0-9.+-]+(;[^;,]+)*;base64,|https:\/\
 const safeMedia = u => (typeof u === 'string' && MEDIA_OK.test(u)) ? u : '';
 const isOnline = p => !!(p && p.online && p.lastSeen && p.lastSeen.toMillis && (Date.now() - p.lastSeen.toMillis() < 180000));
 const tsMs = ts => ts && ts.toMillis ? ts.toMillis() : (typeof ts === 'number' ? ts : 0);
+const isTyping = v => typeof v === 'number' && v > 0 && (Date.now() - v) < 6000;
+function fmtListTime(ms) {
+  if (!ms) return '';
+  const d = new Date(ms), n = new Date();
+  const p = x => String(x).padStart(2, '0');
+  if (d.toDateString() === n.toDateString()) return `${p(d.getHours())}:${p(d.getMinutes())}`;
+  const y = new Date(n); y.setDate(n.getDate() - 1);
+  if (d.toDateString() === y.toDateString()) return 'Yesterday';
+  return `${p(d.getDate())}/${p(d.getMonth() + 1)}`;
+}
+function dayLabel(ms) {
+  const d = new Date(ms), n = new Date();
+  if (d.toDateString() === n.toDateString()) return 'Today';
+  const y = new Date(n); y.setDate(n.getDate() - 1);
+  if (d.toDateString() === y.toDateString()) return 'Yesterday';
+  return d.toLocaleDateString(undefined, { day: 'numeric', month: 'short', year: d.getFullYear() === n.getFullYear() ? undefined : 'numeric' });
+}
 
 function getDraft(cid) {
   if (!cid) return '';
@@ -699,9 +756,30 @@ function stopRingtone() {
   if (ringtoneInterval) { clearInterval(ringtoneInterval); ringtoneInterval = null; }
 }
 
+let swReg = null;
+async function initNotifications() {
+  try { if ('serviceWorker' in navigator) swReg = await navigator.serviceWorker.register('sw.js'); } catch (e) {}
+  const ask = () => {
+    try { if ('Notification' in window && Notification.permission === 'default') Notification.requestPermission(); } catch (e) {}
+    document.removeEventListener('click', ask);
+  };
+  document.addEventListener('click', ask);
+}
+function showSystemNotification(title, body, tag, urgent) {
+  try {
+    if (!('Notification' in window) || Notification.permission !== 'granted' || !document.hidden) return;
+    if (!isSoundEnabled()) return;
+    const opts = { body, tag: tag || 'amar', icon: 'icon-192.png', badge: 'icon-192.png', renotify: true, vibrate: urgent ? [300, 150, 300, 150, 300] : [120] };
+    if (swReg && swReg.showNotification) swReg.showNotification(title, opts);
+    else { const n = new Notification(title, opts); n.onclick = () => { window.focus(); n.close(); }; }
+  } catch (e) {}
+}
+setTimeout(initNotifications, 400);
+
 function triggerNotification(title, body, isCall = false) {
   if (!isCall) playAlertBeep(660, 0.15);
-  toast(`${title}: ${body}`);
+  if (!document.hidden || isCall) toast(`${title}: ${body}`);
+  showSystemNotification(title, body, isCall ? 'call' : 'msg', isCall);
 }
 
 // Low-read alert listener: watches `chats` docs only (no per-chat `messages` listeners!)
@@ -710,7 +788,7 @@ function watchChatNotifications() {
   if (!me) return;
   let initial = true;
 
-  chatAlertUnsub = db.collection('chats').where('members', 'array-contains', me.uid).limit(25).onSnapshot(snap => {
+  chatAlertUnsub = db.collection('chats').where('members', 'array-contains', me.uid).limit(60).onSnapshot(snap => {
     mutedChatIds.clear();
     snap.docs.forEach(d => {
       const c = d.data();
@@ -730,7 +808,7 @@ function watchChatNotifications() {
       lastAlertByChat[cid] = upd;
       if (mutedChatIds.has(cid)) return;
       if (currentOpenChatId === cid && !document.hidden) return;
-      if (!c.lastMessage) return;
+      if (!c.lastMessage || c.lastSender === me.uid) return;
       const title = c.isGroup ? (c.name || 'Group') : (c.memberNames ? Object.entries(c.memberNames).find(([k]) => k !== me.uid)?.[1] : tr('appName'));
       triggerNotification(title || tr('appName'), c.lastMessage, false);
     });
@@ -764,7 +842,7 @@ function syncMediaElements() {
       $remV.style.display = 'block';
       $locV.style.display = 'block';
       if ($remV.srcObject !== remoteStream) $remV.srcObject = remoteStream;
-      $remV.muted = false;
+      $remV.muted = true;
       $remV.volume = 1.0;
       $remV.play().catch(() => {});
     }
@@ -943,12 +1021,12 @@ async function setupPeer(callDocRef, isCaller, isVideo) {
   isSettingRemote = false;
   currentFacingMode = 'user';
   callIsVideo = !!isVideo;
-  pc = new RTCPeerConnection(RTC_CFG);
+  pc = new RTCPeerConnection(await getRtcCfg());
   remoteStream = new MediaStream();
   $remA.srcObject = remoteStream;
   $remA.muted = false;
   $remV.srcObject = remoteStream;
-  $remV.muted = false;
+  $remV.muted = true;
 
   const audioConstraints = { echoCancellation: true, noiseSuppression: true };
   try {
@@ -989,7 +1067,7 @@ async function setupPeer(callDocRef, isCaller, isVideo) {
       const hasVid = (remoteStream && remoteStream.getVideoTracks().length > 0) || callIsVideo;
       $cst.textContent = hasVid ? tr('videoConnected') : tr('audioConnected');
     } else if (pc.iceConnectionState === 'failed') {
-      const hint = TURN_SERVERS.length === 0 ? ' (Add TURN server in TURN_SERVERS for long-distance)' : '';
+      const hint = (!METERED_API_KEY && TURN_SERVERS.length === 0) ? ' (different networks need a TURN server - see METERED_APP at the top of the code)' : '';
       toast('Call connection failed' + hint);
       endCall(true);
     }
@@ -1114,7 +1192,8 @@ function listenIncomingCalls() {
 
   callWatchUnsub = db.collection('calls')
     .where('calleeId', '==', me.uid)
-    .limit(5)
+    .where('status', '==', 'ringing')
+    .limit(10)
     .onSnapshot(snap => {
       if (!initialLoadDone) {
         initialLoadDone = true;
@@ -1154,7 +1233,7 @@ function listenIncomingCalls() {
     if (decBtn) {
       decBtn.onclick = async () => {
         ringingCallId = null; stopRingtone();
-        await logCallHistory(d.callerId, d.callerName || 'User', !!d.isVideo, 'incoming', 'missed');
+        await logCallHistory(d.callerId, d.callerName || 'User', !!d.isVideo, 'incoming', 'declined');
         try { await docRef.update({ status: 'declined' }); } catch (e) {}
         hideCallUI();
       };
@@ -1201,6 +1280,9 @@ function fmtStatus(p, canSee = true) {
   if (!d) return '';
   return `${tr('lastSeen')} ${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
 }
+
+window.addEventListener('offline', () => toast('You are offline. Messages will send when you are back online.'));
+window.addEventListener('online', () => toast('Back online'));
 
 auth.onAuthStateChanged(async u => {
   me = u; stop(); stopPresence(); appUnlocked = false;
@@ -1637,7 +1719,7 @@ async function openStatusModal() {
     if (show && !contactsLoaded) {
       contactsLoaded = true;
       try {
-        const cSnap = await db.collection('chats').where('members', 'array-contains', me.uid).limit(20).get();
+        const cSnap = await db.collection('chats').where('members', 'array-contains', me.uid).limit(60).get();
         const peers = {};
         cSnap.docs.forEach(d => {
           const cd = d.data();
@@ -1679,6 +1761,8 @@ async function sendStatusReply(statusObj, replyText) {
     isGroup: false, members: ids,
     memberNames: { [me.uid]: myName(), [statusObj.uid]: statusObj.userName || 'User' },
     lastMessage: `Status reply: ${clean}`,
+    lastSender: me.uid,
+    unread: { [statusObj.uid]: FV.increment(1) },
     updatedAt: FV.serverTimestamp()
   }, { merge: true });
   await db.collection('chats').doc(cid).collection('messages').add({
@@ -1856,6 +1940,10 @@ function home(activeTab = 'chats', showArchived = false) {
       return !(delTs && updTs && updTs <= delTs);
     });
 
+    const totalUnread = visibleChats.reduce((n, c) => n + ((!c.archivedBy?.[me.uid] && !c.mutedBy?.[me.uid]) ? (c.unread?.[me.uid] || 0) : 0), 0);
+    document.title = totalUnread ? `(${totalUnread}) Amar Chat` : 'Amar Chat';
+    const tcb = document.getElementById('t_chats');
+    if (tcb) tcb.textContent = tr('chatsTab') + (totalUnread ? ` (${totalUnread > 99 ? '99+' : totalUnread})` : '');
     const archivedCount = visibleChats.filter(c => !!c.archivedBy?.[me.uid]).length;
     const archslot = document.getElementById('archslot');
     if (archslot) {
@@ -1889,13 +1977,20 @@ function home(activeTab = 'chats', showArchived = false) {
       const photo = c.isGroup ? (c.groupIcon || '') : (userProfilesCache[oid]?.photo || '');
       const isMuted = !!c.mutedBy?.[me.uid];
       const draftTxt = getDraft(c.id).trim();
-      const subHtml = draftTxt ? `<span class="draftlbl">Draft:</span> ${esc(draftTxt)}` : esc(c.lastMessage || '');
-      return `<div class="row" data-id="${c.id}" data-t="${esc(t)}" data-oid="${oid || ''}">
+      const un = c.unread?.[me.uid] || 0;
+      const typers = Object.entries(c.typing || {}).filter(([u, v]) => u !== me.uid && isTyping(v));
+      const mineLast = c.lastSender === me.uid && c.lastMessage ? '<span class="youlbl">You: </span>' : '';
+      const subHtml = typers.length ? '<span class="typlbl">✍️ typing…</span>'
+        : draftTxt ? `<span class="draftlbl">Draft:</span> ${esc(draftTxt)}`
+        : mineLast + esc(c.lastMessage || '');
+      const ts = tsMs(c.updatedAt);
+      return `<div class="row ${un ? 'unrd' : ''}" data-id="${c.id}" data-t="${esc(t)}" data-oid="${oid || ''}">
         <div class="av">${avHtml(photo, t, c.isGroup)}</div>
         <div class="mid">
-          <div class="t">${esc(t)} ${isMuted ? '<span title="Muted" style="font-size:12px">🔇</span>' : ''}</div>
+          <div class="t">${esc(t)} ${isMuted ? '<span title="Muted" style="font-size:12px">🔇</span>' : ''}${c.disappearHours ? ' <span title="Disappearing messages" style="font-size:12px">⏱</span>' : ''}</div>
           <div class="s">${subHtml}</div>
         </div>
+        <div class="rmeta"><span class="rtm ${un && !isMuted ? 'un' : ''}">${fmtListTime(ts)}</span>${un ? `<span class="badge ${isMuted ? 'mute' : ''}">${un > 99 ? '99+' : un}</span>` : ''}</div>
       </div>`;
     }).join('');
 
@@ -1905,12 +2000,17 @@ function home(activeTab = 'chats', showArchived = false) {
   };
 
   if (activeTab === 'status') {
-    addSub(db.collection('statuses').where('privacy', '==', 'all').limit(25).onSnapshot(snap => {
-      statusDocs = snap.docs.map(d => ({ id: d.id, ...d.data() }))
-        .filter(s => (s.expiresAt || 0) > Date.now())
-        .sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
+    const stMap = { a: [], b: [], c: [] };
+    const stMerge = () => {
+      const seen = new Map();
+      [...stMap.a, ...stMap.b, ...stMap.c].forEach(x => seen.set(x.id, x));
+      statusDocs = [...seen.values()].filter(x => (x.expiresAt || 0) > Date.now()).sort((x, y) => (y.createdAt || 0) - (x.createdAt || 0));
       renderBody();
-    }, () => renderBody()));
+    };
+    const stSub = (k, q) => addSub(q.onSnapshot(snap => { stMap[k] = snap.docs.map(d => ({ id: d.id, ...d.data() })); stMerge(); }, () => stMerge()));
+    stSub('a', db.collection('statuses').where('privacy', '==', 'all').limit(30));
+    stSub('b', db.collection('statuses').where('uid', '==', me.uid).limit(20));
+    stSub('c', db.collection('statuses').where('allowedUids', 'array-contains', me.uid).limit(20));
     return;
   }
 
@@ -1922,7 +2022,9 @@ function home(activeTab = 'chats', showArchived = false) {
     return;
   }
 
-  addSub(db.collection('chats').where('members', 'array-contains', me.uid).limit(25).onSnapshot(snap => {
+  const typTick = setInterval(() => { if (allChats.some(c => Object.entries(c.typing || {}).some(([u, v]) => u !== me.uid && v))) renderBody(); }, 3000);
+  addSub(() => clearInterval(typTick));
+  addSub(db.collection('chats').where('members', 'array-contains', me.uid).limit(60).onSnapshot(snap => {
     allChats = snap.docs.map(d => ({ id: d.id, ...d.data() }))
       .sort((a, b) => (b.updatedAt?.seconds || 9e12) - (a.updatedAt?.seconds || 9e12));
     renderBody();
@@ -2042,36 +2144,95 @@ function groupInfoView(chatId) {
   stop();
   currentScreenName = 'groupinfo';
   pushSubScreenHistory('groupinfo');
-  $app.innerHTML = `<header><button id="bk">←</button>Group Info</header><div class="pad" id="gbody"><div class="empty">Loading...</div></div>`;
-  document.getElementById('bk').onclick = () => chatView(chatId, 'Group', null);
+  const FV = firebase.firestore.FieldValue;
+  const cref = db.collection('chats').doc(chatId);
+  $app.innerHTML = `<header><button id="bk">←</button>Group Info</header><div class="list"><div class="pad" id="gbody"><div class="empty">Loading...</div></div></div>`;
+  let curName = 'Group', lastSig = '';
+  document.getElementById('bk').onclick = () => chatView(chatId, curName, null);
 
-  addSub(db.collection('chats').doc(chatId).onSnapshot(snap => {
+  addSub(cref.onSnapshot(snap => {
     if (!snap.exists) { home('chats', false); return; }
-    const latestData = snap.data();
-    const members = latestData.members || [];
+    const c = snap.data();
+    const members = c.members || [];
     if (!members.includes(me.uid)) { home('chats', false); return; }
-    const admins = latestData.admins || [members[0]];
+    const admins = c.admins || [];
     const isAdmin = admins.includes(me.uid);
+    curName = c.name || 'Group';
+    const sig = JSON.stringify([c.name, c.description, members, admins, c.memberNames, c.memberUsernames]);
+    if (sig === lastSig) return;
+    lastSig = sig;
     const gbody = document.getElementById('gbody');
     if (!gbody) return;
     gbody.innerHTML = `
       <div class="card">
-        <div style="font-size:16px;font-weight:600">${esc(latestData.name || 'Group')}</div>
-        ${latestData.description ? `<p class="hint" style="margin-top:4px">${esc(latestData.description)}</p>` : ''}
+        ${isAdmin ? `
+          <input type="text" id="gname" value="${esc(c.name || '')}" placeholder="Group name" maxlength="40">
+          <input type="text" id="gdesc" value="${esc(c.description || '')}" placeholder="Description (optional)" maxlength="150">
+          <button class="btn sm" id="gsave">Save</button>`
+        : `<div style="font-size:17px;font-weight:700">${esc(c.name || 'Group')}</div>
+           ${c.description ? `<p class="hint" style="margin-top:4px">${esc(c.description)}</p>` : ''}`}
       </div>
       <div class="card">
-        ${members.map(uid => `<div class="mrow"><span>${esc(latestData.memberNames?.[uid] || 'User')} ${admins.includes(uid) ? '<b style="color:var(--g);font-size:12px">[Admin]</b>' : ''}</span></div>`).join('')}
+        <div class="hint"><b>${members.length} members</b></div>
+        ${members.map(uid => `<div class="mrow">
+          <span>${esc(c.memberNames?.[uid] || 'User')}${c.memberUsernames?.[uid] ? ` <span class="hint" style="margin:0">@${esc(c.memberUsernames[uid])}</span>` : ''} ${admins.includes(uid) ? '<b style="color:var(--g);font-size:12px">[Admin]</b>' : ''}${uid === me.uid ? ' <span class="hint" style="margin:0">(You)</span>' : ''}</span>
+          ${isAdmin && uid !== me.uid ? `<span><button class="btn sm gadm" data-u="${uid}" style="padding:4px 9px;font-size:11px">${admins.includes(uid) ? 'Remove admin' : 'Make admin'}</button> <button class="btn sm danger grm" data-u="${uid}" style="padding:4px 9px;font-size:11px">Remove</button></span>` : ''}
+        </div>`).join('')}
       </div>
+      ${isAdmin ? `<div class="card">
+        <div class="hint"><b>Add a member</b></div>
+        <div class="addrow"><input type="text" id="gq" placeholder="username" autocapitalize="off" autocomplete="off"><button class="btn sm" id="gad">Add</button></div>
+        <p class="err" id="ger" style="margin-top:8px"></p>
+      </div>` : '<p class="hint">Only admins can change the group or add/remove members.</p>'}
       <button class="btn danger" id="gleave">Leave Group</button>`;
-    document.getElementById('bk').onclick = () => chatView(chatId, latestData.name || 'Group', null);
-    document.getElementById('gleave').onclick = async () => {
-      await db.collection('chats').doc(chatId).update({
-        members: firebase.firestore.FieldValue.arrayRemove(me.uid),
-        admins: firebase.firestore.FieldValue.arrayRemove(me.uid)
-      });
-      home('chats', false);
+
+    const gs = document.getElementById('gsave');
+    if (gs) gs.onclick = async () => {
+      const name = document.getElementById('gname').value.trim();
+      if (!name) return toast('Group name cannot be empty');
+      try { await cref.update({ name, description: document.getElementById('gdesc').value.trim() }); toast('Group updated'); }
+      catch (e) { toast('Could not update group'); }
     };
-  }));
+    const gad = document.getElementById('gad');
+    if (gad) {
+      const add = async () => {
+        const er = document.getElementById('ger'), q = document.getElementById('gq');
+        er.textContent = '';
+        try {
+          const u = await lookup(q.value);
+          if (members.includes(u.uid)) throw new Error('Already in this group');
+          await cref.update({
+            members: FV.arrayUnion(u.uid),
+            ['memberNames.' + u.uid]: u.name,
+            ['memberUsernames.' + u.uid]: u.username
+          });
+          q.value = '';
+          toast(u.name + ' added');
+        } catch (ex) { er.textContent = ex.message; }
+      };
+      gad.onclick = add;
+      document.getElementById('gq').addEventListener('keydown', e => { if (e.key === 'Enter') add(); });
+    }
+    gbody.querySelectorAll('.gadm').forEach(b => b.onclick = async () => {
+      const u = b.dataset.u;
+      try { await cref.update({ admins: admins.includes(u) ? FV.arrayRemove(u) : FV.arrayUnion(u) }); }
+      catch (e) { toast('Could not change admin'); }
+    });
+    gbody.querySelectorAll('.grm').forEach(b => b.onclick = async () => {
+      const u = b.dataset.u;
+      if (!confirm('Remove ' + (c.memberNames?.[u] || 'this member') + ' from the group?')) return;
+      try { await cref.update({ members: FV.arrayRemove(u), admins: FV.arrayRemove(u), ['memberNames.' + u]: FV.delete(), ['memberUsernames.' + u]: FV.delete() }); toast('Removed'); }
+      catch (e) { toast('Could not remove member'); }
+    });
+    document.getElementById('gleave').onclick = async () => {
+      if (!confirm('Leave this group?')) return;
+      const rest = members.filter(x => x !== me.uid);
+      let nextAdmins = admins.filter(x => x !== me.uid);
+      if (!nextAdmins.length && rest.length) nextAdmins = [rest[0]];
+      try { await cref.update({ members: rest, admins: nextAdmins }); home('chats', false); }
+      catch (e) { toast('Could not leave group'); }
+    };
+  }, () => home('chats', false)));
 }
 
 function openWallpaperModal(chatId, chatRef, currentWp) {
@@ -2168,7 +2329,7 @@ async function openForwardModal(msgList) {
   modal.querySelector('#mcl').onclick = () => modal.remove();
   modal.onclick = e => { if (e.target === modal) modal.remove(); };
   try {
-    const snap = await db.collection('chats').where('members', 'array-contains', me.uid).limit(20).get();
+    const snap = await db.collection('chats').where('members', 'array-contains', me.uid).limit(60).get();
     const fls = modal.querySelector('#fls');
     fls.innerHTML = snap.docs.map(d => {
       const c = { id: d.id, ...d.data() };
@@ -2191,7 +2352,11 @@ async function openForwardModal(msgList) {
           });
           lastPreview = msgObj.audio ? '🎤 Voice message' : msgObj.image ? '📷 Photo' : (msgObj.text || 'Message');
         }
-        if (lastPreview) await db.collection('chats').doc(targetId).set({ lastMessage: '↪ ' + lastPreview, updatedAt: FV.serverTimestamp() }, { merge: true });
+        if (lastPreview) {
+          const tm = (snap.docs.find(x => x.id === targetId)?.data().members) || [];
+          const unread = {}; tm.forEach(u => { if (u !== me.uid) unread[u] = FV.increment(1); });
+          await db.collection('chats').doc(targetId).set({ lastMessage: '↪ ' + lastPreview, lastSender: me.uid, unread, updatedAt: FV.serverTimestamp() }, { merge: true });
+        }
         modal.remove();
         chatView(targetId, r.dataset.t, r.dataset.oid || null);
       };
@@ -2231,6 +2396,8 @@ function chatView(chatId, title, peerUid = null) {
   let inChatQuery = '';
   let replyTarget = null;
   let selectedIds = new Set();
+  let typingNames = [], typingTimeout = null, isTypingNow = false, lastTypingWrite = 0, typingClear = null, lastSig = '', openId = null;
+  const purged = new Set();
 
   $app.innerHTML = `
     <header id="chdr">
@@ -2252,6 +2419,7 @@ function chatView(chatId, title, peerUid = null) {
     <div id="csresults"></div>
     <div id="pinslot"></div>
     <div class="msgs" id="ms"></div>
+    <button class="tobot" id="tobot" style="display:none" title="Latest messages">⬇</button>
     <div class="replybar" id="rbar">
       <div class="rtxt" id="rtxt"></div>
       <button id="rcl">✕</button>
@@ -2288,6 +2456,13 @@ function chatView(chatId, title, peerUid = null) {
   const rtxt = document.getElementById('rtxt');
 
   tx.value = getDraft(chatId);
+  const autosize = () => { tx.style.height = 'auto'; tx.style.height = Math.min(tx.scrollHeight, 110) + 'px'; };
+  autosize();
+  const tobot = document.getElementById('tobot');
+  ms.addEventListener('scroll', () => {
+    tobot.style.display = (ms.scrollHeight - ms.scrollTop - ms.clientHeight > 300) ? 'flex' : 'none';
+  });
+  tobot.onclick = () => { ms.scrollTo({ top: ms.scrollHeight, behavior: 'smooth' }); };
 
   let msgCache = {};
   let lastDocs = [];
@@ -2321,6 +2496,7 @@ function chatView(chatId, title, peerUid = null) {
     if (rec && rec.state !== 'inactive') { cancelRec(); return true; }
     if (ep.classList.contains('on')) { ep.classList.remove('on'); return true; }
     setDraft(chatId, tx.value);
+    setTyping(false);
     home('chats', false);
     return true;
   };
@@ -2328,12 +2504,19 @@ function chatView(chatId, title, peerUid = null) {
   function updateHeaderSub() {
     const subEl = document.getElementById('hsub');
     if (!subEl) return;
+    if (typingNames.length) {
+      subEl.innerHTML = `<span class="typlbl2">${peerUid ? 'typing…' : esc(typingNames.join(', ')) + ' typing…'}</span>`;
+      return;
+    }
+    let txt = '';
     if (peerUid && peerPres) {
       const canSee = peerUser?.privacy?.lastSeen !== false;
-      subEl.textContent = fmtStatus(peerPres, canSee);
+      txt = fmtStatus(peerPres, canSee);
     } else if (!peerUid && chatMeta.members) {
-      subEl.textContent = `${chatMeta.members.length} members`;
-    } else subEl.textContent = '';
+      txt = `${chatMeta.members.length} members`;
+    }
+    if (chatMeta.disappearHours) txt += (txt ? ' • ' : '') + '⏱ ' + (chatMeta.disappearHours === 1 ? '1 hour' : chatMeta.disappearHours === 24 ? '24 hours' : '7 days');
+    subEl.textContent = txt;
   }
 
   function rebuildMenu(menuEl) {
@@ -2345,6 +2528,7 @@ function chatView(chatId, title, peerUid = null) {
 
     menuEl.innerHTML = `
       ${!peerUid ? '<div id="cm_ginfo">👥 Group Info</div>' : ''}
+      <div id="cm_dis">⏱ Disappearing: ${({ 0: 'Off', 1: '1 hour', 24: '24 hours', 168: '7 days' })[chatMeta.disappearHours || 0] || 'Off'}</div>
       <div id="cm_wp">🖼 Wallpaper</div>
       <div id="cm_mute">${isMuted ? '🔔 Unmute' : '🔇 Mute'}</div>
       <div id="cm_arch">${isArchived ? '📤 Unarchive' : '📦 Archive'}</div>
@@ -2355,6 +2539,15 @@ function chatView(chatId, title, peerUid = null) {
     const gi = document.getElementById('cm_ginfo');
     if (gi) gi.onclick = () => { menuEl.style.display = 'none'; groupInfoView(chatId); };
     document.getElementById('cm_wp').onclick = () => { menuEl.style.display = 'none'; openWallpaperModal(chatId, chat, curWp); };
+    document.getElementById('cm_dis').onclick = async () => {
+      menuEl.style.display = 'none';
+      const order = [0, 1, 24, 168];
+      const next = order[(order.indexOf(chatMeta.disappearHours || 0) + 1) % order.length];
+      try {
+        await chat.set({ disappearHours: next }, { merge: true });
+        toast(next ? 'New messages will disappear after ' + ({ 1: '1 hour', 24: '24 hours', 168: '7 days' })[next] : 'Disappearing messages off');
+      } catch (e) { toast('Could not change setting'); }
+    };
     document.getElementById('cm_mute').onclick = async () => { menuEl.style.display = 'none'; await chat.set({ mutedBy: { [me.uid]: !isMuted } }, { merge: true }); };
     document.getElementById('cm_arch').onclick = async () => {
       menuEl.style.display = 'none';
@@ -2386,7 +2579,7 @@ function chatView(chatId, title, peerUid = null) {
   function bindChatHeaderEvents() {
     const newHtitle = document.getElementById('htitle');
     const newCmenu = document.getElementById('cmenu');
-    document.getElementById('bk').onclick = () => { setDraft(chatId, tx.value); cancelRec(); home('chats', false); };
+    document.getElementById('bk').onclick = () => { setDraft(chatId, tx.value); setTyping(false); cancelRec(); home('chats', false); };
     if (!peerUid) document.getElementById('hinfo').onclick = () => groupInfoView(chatId);
     if (peerUid) {
       document.getElementById('acall').onclick = () => startCall(peerUid, newHtitle.textContent, false);
@@ -2498,7 +2691,42 @@ function chatView(chatId, title, peerUid = null) {
     };
   });
   document.getElementById('ebtn').onclick = () => ep.classList.toggle('on');
-  tx.addEventListener('input', () => setDraft(chatId, tx.value));
+  const setTyping = async val => {
+    const now = Date.now();
+    if (val) { if (isTypingNow && now - lastTypingWrite < 3000) return; }
+    else if (!isTypingNow) return;
+    isTypingNow = val;
+    lastTypingWrite = now;
+    try { await chat.set({ typing: { [me.uid]: val ? now : 0 } }, { merge: true }); } catch (e) {}
+  };
+  tx.addEventListener('input', () => {
+    setDraft(chatId, tx.value);
+    autosize();
+    if (tx.value.trim()) {
+      setTyping(true);
+      clearTimeout(typingTimeout);
+      typingTimeout = setTimeout(() => setTyping(false), 2000);
+    } else setTyping(false);
+  });
+  const markRead = () => {
+    const seenOk = !document.hidden && profile?.privacy?.readReceipts !== false;
+    const FVr = firebase.firestore.FieldValue;
+    lastDocs.forEach(ds => {
+      const m = ds.data();
+      if (m.senderId === me.uid || m.deleted) return;
+      const u = {};
+      if (!(m.deliveredTo || []).includes(me.uid)) u.deliveredTo = FVr.arrayUnion(me.uid);
+      if (seenOk && !(m.seenBy || []).includes(me.uid)) u.seenBy = FVr.arrayUnion(me.uid);
+      if (Object.keys(u).length) ds.ref.update(u).catch(() => {});
+    });
+  };
+  const onVis = () => {
+    if (document.hidden) return;
+    markRead();
+    if ((chatMeta.unread?.[me.uid] || 0) > 0) chat.set({ unread: { [me.uid]: 0 } }, { merge: true }).catch(() => {});
+  };
+  document.addEventListener('visibilitychange', onVis);
+  addSub(() => document.removeEventListener('visibilitychange', onVis));
 
   function applyChatWallpaper() {
     const wp = chatMeta.wallpaperBy?.[me.uid];
@@ -2530,11 +2758,21 @@ function chatView(chatId, title, peerUid = null) {
     chatMeta = d.data();
     const tEl = document.getElementById('htitle');
     if (!peerUid && chatMeta.name && tEl) tEl.textContent = chatMeta.name;
-    applyChatWallpaper();
+    typingNames = Object.entries(chatMeta.typing || {})
+      .filter(([u, v]) => u !== me.uid && isTyping(v))
+      .map(([u]) => chatMeta.memberNames?.[u] || 'Someone');
+    clearTimeout(typingClear);
+    if (typingNames.length) typingClear = setTimeout(() => { typingNames = []; updateHeaderSub(); }, 6500);
     updateHeaderSub();
+    if ((chatMeta.unread?.[me.uid] || 0) > 0 && !document.hidden) chat.set({ unread: { [me.uid]: 0 } }, { merge: true }).catch(() => {});
+    // Typing / unread changes must NOT redraw all messages (keeps scrolling smooth)
+    const sig = JSON.stringify([tsMs(chatMeta.deletedAt?.[me.uid]), chatMeta.wallpaperBy?.[me.uid] || null, chatMeta.pinnedMessage || null, chatMeta.name || '', chatMeta.disappearHours || 0, chatMeta.members || [], !!chatMeta.mutedBy?.[me.uid], !!chatMeta.archivedBy?.[me.uid]]);
+    if (sig === lastSig) return;
+    lastSig = sig;
+    applyChatWallpaper();
     renderPinBanner();
     renderMessages();
-  }));
+  }, () => { toast('You no longer have access to this chat'); home('chats', false); }));
 
   document.getElementById('reccncl').onclick = cancelRec;
   document.getElementById('recstop').onclick = () => { if (rec && rec.state !== 'inactive') { try { rec.stop(); } catch (e) {} } };
@@ -2549,6 +2787,10 @@ function chatView(chatId, title, peerUid = null) {
 
     const visibleDocs = lastDocs.filter(d => {
       const m = d.data();
+      if (m.expiresAt && Date.now() > m.expiresAt) {
+        if (!purged.has(d.id)) { purged.add(d.id); d.ref.delete().catch(() => {}); }
+        return false;
+      }
       if (Array.isArray(m.hiddenFor) && m.hiddenFor.includes(me.uid)) return false;
       const mTs = tsMs(m.createdAt);
       return !(delTs && mTs && mTs <= delTs);
@@ -2571,16 +2813,21 @@ function chatView(chatId, title, peerUid = null) {
       csresults.innerHTML = '';
     }
 
+    let lastDay = '';
     ms.innerHTML = visibleDocs.map(d => {
       const m = d.data();
       msgCache[d.id] = m;
+      const mts = tsMs(m.createdAt) || Date.now();
+      const dl = dayLabel(mts);
+      const sep = dl !== lastDay ? `<div class="daysep"><span>${esc(dl)}</span></div>` : '';
+      lastDay = dl;
       const mine = m.senderId === me.uid;
       const dt = m.createdAt?.toDate();
       const tm = dt ? String(dt.getHours()).padStart(2, '0') + ':' + String(dt.getMinutes()).padStart(2, '0') : '';
       const isSel = selectedIds.has(d.id);
 
       if (m.deleted) {
-        return `<div class="b ${mine ? 'me' : ''} ${isSel ? 'selected' : ''}" data-id="${d.id}">
+        return `${sep}<div class="b ${mine ? 'me' : ''} ${isSel ? 'selected' : ''}" data-id="${d.id}">
           ${mine ? '' : `<div class="n">${esc(m.senderName)}</div>`}
           <span class="del">🚫 Deleted</span><span class="tm">${tm}</span></div>`;
       }
@@ -2597,14 +2844,16 @@ function chatView(chatId, title, peerUid = null) {
       const safeImg = safeMedia(m.image);
       const safeAud = safeMedia(m.audio);
 
-      return `<div class="b ${mine ? 'me' : ''} ${isSel ? 'selected' : ''}" data-id="${d.id}">
+      const others = (a) => (a || []).some(u => u !== me.uid);
+      const tick = !mine ? '' : others(m.seenBy) ? '<span class="tick seen">✓✓</span>' : others(m.deliveredTo) ? '<span class="tick">✓✓</span>' : '<span class="tick">✓</span>';
+      return `${sep}<div class="b ${mine ? 'me' : ''} ${isSel ? 'selected' : ''} ${openId === d.id ? 'open' : ''}" data-id="${d.id}">
         ${mine ? '' : `<div class="n">${esc(m.senderName)}</div>`}
         ${m.forwarded ? '<div class="fwd">↪ Forwarded</div>' : ''}
         ${m.replyTo ? `<div class="qbox"><b>${esc(m.replyTo.senderName || 'User')}</b>${esc(m.replyTo.preview || '')}</div>` : ''}
         ${safeImg ? `<img class="zoomimg" loading="lazy" src="${esc(safeImg)}" data-cap="${esc(m.text || '')}">` : ''}
         ${safeAud ? `<audio controls preload="metadata" src="${esc(safeAud)}"></audio><button type="button" class="spdbtn" data-spd="1">1x</button>` : ''}
         ${m.text ? `<span class="txt">${formatTextWithLinks(m.text)}</span>${buildLinkPreviewHtml(m.text)}` : ''}${m.edited ? '<span class="ed">(edited)</span>' : ''}
-        <span class="tm">${tm}</span>
+        <span class="tm">${m.expiresAt ? '⏱ ' : ''}${tm} ${tick}</span>
         ${rxHtml}
         <div class="act">
           ${REACTIONS.map(em => `<span class="rx" data-em="${em}">${em}</span>`).join('')}
@@ -2615,7 +2864,8 @@ function chatView(chatId, title, peerUid = null) {
           <span class="mpin">${isPinned ? esc(tr('unpinBtn')) : '📌 ' + esc(tr('pinBtn'))}</span>
           <span class="mfwd">↪ ${esc(tr('forwardBtn'))}</span>
           ${mine && m.text ? `<span class="medit">✎ ${esc(tr('editBtn'))}</span>` : ''}
-          ${mine ? `<span class="mdel">🗑 ${esc(tr('deleteBtn'))}</span>` : ''}
+          <span class="mdel">🗑 ${esc(tr('deleteBtn'))}</span>
+          ${mine ? '<span class="mdela">🗑 For everyone</span>' : ''}
         </div>
       </div>`;
     }).join('');
@@ -2648,6 +2898,7 @@ function chatView(chatId, title, peerUid = null) {
         if (e.target.closest('.act') || e.target.closest('audio') || e.target.closest('a') || e.target.closest('.zoomimg') || e.target.closest('.spdbtn')) return;
         if (selectedIds.size > 0) { toggleSelect(b.dataset.id); return; }
         b.classList.toggle('open');
+        openId = b.classList.contains('open') ? b.dataset.id : null;
       };
     });
 
@@ -2731,6 +2982,15 @@ function chatView(chatId, title, peerUid = null) {
       };
     });
 
+    ms.querySelectorAll('.mdela').forEach(btn => {
+      btn.onclick = async e => {
+        e.stopPropagation();
+        if (!confirm('Delete this message for everyone?')) return;
+        const id = btn.closest('.b').dataset.id;
+        try { await chat.collection('messages').doc(id).update({ text: null, image: null, audio: null, deleted: true }); } catch (err) { toast('Could not delete'); }
+      };
+    });
+
     if (atBottom || ms.dataset.init !== '1') {
       ms.scrollTop = ms.scrollHeight;
       ms.dataset.init = '1';
@@ -2741,7 +3001,11 @@ function chatView(chatId, title, peerUid = null) {
   addSub(chat.collection('messages').orderBy('createdAt').limitToLast(40).onSnapshot(snap => {
     lastDocs = snap.docs;
     renderMessages();
+    markRead();
   }));
+  // expired (disappearing) messages vanish without waiting for new data
+  const expTimer = setInterval(() => { if (lastDocs.some(d => { const x = d.data().expiresAt; return x && Date.now() > x; })) renderMessages(); }, 20000);
+  addSub(() => clearInterval(expTimer));
 
   async function send(text, image, audio, audioMime) {
     if (peerUid && myBlocked().includes(peerUid)) throw new Error('User is blocked');
@@ -2753,14 +3017,21 @@ function chatView(chatId, title, peerUid = null) {
       text: text || null, image: image || null,
       audio: audio || null, audioMime: audioMime || null,
       replyTo: rep, reactions: {}, hiddenFor: [],
+      expiresAt: (chatMeta.disappearHours || 0) > 0 ? Date.now() + chatMeta.disappearHours * 3600000 : null,
       edited: false, deleted: false,
       deliveredTo: [me.uid], seenBy: [me.uid],
       createdAt: FV.serverTimestamp()
     });
     const last = audio ? '🎤 Voice message' : image ? '📷 Photo' : text;
+    const unread = {};
+    (chatMeta.members || []).forEach(u => { if (u !== me.uid) unread[u] = FV.increment(1); });
+    isTypingNow = false;
     await chat.set({
       lastMessage: last,
+      lastSender: me.uid,
       updatedAt: FV.serverTimestamp(),
+      typing: { [me.uid]: 0 },
+      unread,
       archivedBy: { [me.uid]: false }
     }, { merge: true });
   }
@@ -2829,6 +3100,7 @@ function chatView(chatId, title, peerUid = null) {
   const sendText = async () => {
     const t = tx.value.trim(); if (!t) return;
     tx.value = '';
+    autosize();
     setDraft(chatId, '');
     ep.classList.remove('on');
     try { await send(t); } catch (e) { toast(e.message); }
