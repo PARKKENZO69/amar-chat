@@ -1670,6 +1670,7 @@ function verifyView(msg = '', good = false) {
 }
 
 async function route() {
+  $app.innerHTML = '<div class="empty">Loading... (onek khon thakle internet ba Firebase limit check korun)</div>';
   try {
     const d = await db.collection('users').doc(me.uid).get();
     if (d.exists && d.data().username) {
@@ -1686,7 +1687,8 @@ async function route() {
         const mig = db.batch();
         mig.set(privRef(), { blocked, starred }, { merge: true });
         mig.update(db.collection('users').doc(me.uid), { blocked: FV.delete(), starred: FV.delete() });
-        await mig.commit();
+        // do not wait: if the write quota is used up this never finishes and the screen stays white
+        mig.commit().catch(e => console.warn('Private data move failed:', e.message));
       }
       profile.blocked = blocked;
       profile.starred = starred;
