@@ -40,8 +40,6 @@
   .row .t{font-weight:600;display:flex;align-items:center;gap:6px}
   .row .s{color:var(--sub);font-size:14px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
   .draftlbl{color:#e67e22;font-weight:700}
-  .row .meta{display:flex;flex-direction:column;align-items:flex-end;gap:4px;flex:none}
-  .badge{background:#e53935;color:#fff;font-size:11px;font-weight:700;min-width:20px;height:20px;padding:0 6px;border-radius:10px;display:inline-flex;align-items:center;justify-content:center}
   .empty{padding:40px 20px;text-align:center;color:var(--sub)}
   .fab{position:absolute;right:16px;bottom:16px;width:56px;height:56px;border-radius:50%;background:var(--g);color:#fff;border:0;font-size:28px;box-shadow:0 2px 8px #0004;cursor:pointer}
   .menu{position:absolute;right:16px;bottom:84px;background:var(--card);color:var(--text);border-radius:10px;box-shadow:0 2px 12px #0004;overflow:hidden;z-index:30;min-width:220px}
@@ -93,7 +91,6 @@
   .b img.zoomimg{flex-basis:100%;max-width:100%;max-height:220px;border-radius:7px;display:block}
   .b audio{flex-basis:100%;max-width:220px;display:block}
   .b .spdbtn{background:#8883;border:0;border-radius:10px;padding:2px 7px;font-size:11px;font-weight:700;color:var(--text);cursor:pointer}
-  .b .docbox{flex-basis:100%;display:flex;align-items:center;gap:8px;background:#8882;padding:8px 10px;border-radius:8px;text-decoration:none;color:var(--text)}
   .b .dl{font-size:11.5px;color:var(--g);text-decoration:none}
 
   .replybar{display:none;align-items:center;gap:8px;padding:7px 12px;background:var(--bar);border-top:1px solid var(--bd);border-left:4px solid var(--g);font-size:13px}
@@ -196,38 +193,52 @@ const firebaseConfig = {
 };
 
 if (!window.firebase) {
-  document.getElementById('app').innerHTML = '<div class="auth"><h1>Amar Chat</h1><p class="err">Firebase SDK load hoyni. Internet connection check korun, ad/script blocker off kore abar reload korun.</p></div>';
+  document.getElementById('app').innerHTML = '<div class="auth"><h1>Amar Chat</h1><p class="err">Firebase SDK load hoyni. Internet check korun.</p></div>';
   throw new Error('Firebase SDK unavailable');
 }
 firebase.initializeApp(firebaseConfig);
 const auth = firebase.auth();
 const db = firebase.firestore();
 const storage = firebase.storage();
-const USE_STORAGE = true; // Firebase Storage enabled; publish the Storage Rules supplied with this project.
+
+// Spark free plan-e Storage bucket active thake na, tai false rakha hoyeche.
+// Chhoto pic (max 300px) ar chhoto voice (max 12s) Firestore fallback diye pathano jabe.
+const USE_STORAGE = false;
+const MAX_FREE_MEDIA_CHARS = 240000;
+const MAX_FREE_VOICE_SEC = 12;
+
 const $app = document.getElementById('app');
 
-let me = null, profile = null, unsubs = [], callWatchUnsub = null, msgAlertUnsub = null;
+let me = null, profile = null, unsubs = [], callWatchUnsub = null, chatAlertUnsub = null;
 let signingUp = false, presenceTimer = null, presenceCleanup = null, ringingCallId = null, ringTimer = null, pendingCands = [];
 let currentOpenChatId = null, currentScreenName = 'home', appUnlocked = false;
-let suppressPopstate = false, customBackHandler = null;
-const notifiedMsgIds = new Set();
+let customBackHandler = null;
 const mutedChatIds = new Set();
+const lastAlertByChat = {};
 const userProfilesCache = {};
 
 const EMOJIS = ['😊','😂','❤️','👍','🙏','🔥','😍','😢','😮','🎉','👏','😎','💯','🤔','🥳','💔','🌹','☀️','✨','🙌'];
 const REACTIONS = ['👍','❤️','😂','😮','😢','🙏'];
 const WALLPAPER_COLORS = ['#efeae2','#d9e8f5','#fce8d5','#e3f4e8','#eadcf8','#111b21','#1b2832','#251c2b'];
 
+/* ---------- LONG-DISTANCE / CROSS-NETWORK CALL (STUN + TURN) ---------- */
+const TURN_SERVERS = [
+  // Long-distance / strict network-e connect na hole ekhane TURN server din:
+  // {
+  //   urls: ['turn:your-turn-server.com:3478', 'turns:your-turn-server.com:5349'],
+  //   username: 'YOUR_TURN_USERNAME',
+  //   credential: 'YOUR_TURN_PASSWORD'
+  // }
+];
+
 const RTC_CFG = {
-  // STUN helps discover network routes. For reliable calls across restrictive networks,
-  // add a TURN service and short-lived credentials from your own secure token endpoint.
-  // Never publish permanent TURN usernames/passwords in this HTML file.
   iceServers: [
     { urls: 'stun:stun.l.google.com:19302' },
     { urls: 'stun:stun1.l.google.com:19302' },
-    { urls: 'stun:stun2.l.google.com:19302' }
+    { urls: 'stun:stun2.l.google.com:19302' },
+    ...TURN_SERVERS
   ],
-  iceCandidatePoolSize: 10
+  iceCandidatePoolSize: 6
 };
 
 const I18N = {
@@ -237,13 +248,42 @@ const I18N = {
     chatsTab: '💬 Chats',
     statusTab: '🟢 Status',
     callsTab: '📞 Calls',
+    searchChats: '🔍 Chat ba bondhu khujun...',
+    noChats: 'Kono chat nei. Niche + chap diye bondhu khujun.',
+    noSearch: 'Kono chat khuje pawa jayni.',
+    noArch: 'Kono archived chat nei.',
+    archChats: '📦 Archived Chats',
+    backAllChats: '← Sob Chat-e fire jan',
+    newChat: '👤 Notun chat',
+    newGroup: '👥 Notun group',
+    postStatusMenu: '🟢 Status post korun',
+    starredMenu: '⭐ Starred Messages',
     settingsTitle: '⚙️ Settings',
+    newStatusBar: '+ Notun Status Post Korun',
+    noStatus: 'Ekhon kono active status nei.',
+    noCalls: 'Kono call history nei.',
+    msgPlaceholder: 'Message likhun...',
+    online: '🟢 Online',
+    lastSeen: 'Last seen',
+    sendBtn: '⏹ Pathan',
+    cancelBtn: '✕ Cancel',
+    photoSent: 'Photo pathano hoyeche',
+    voiceSent: 'Voice message pathano hoyeche',
+    callConnecting: 'Connecting...',
+    videoCalling: '📹 Video call korchi...',
+    audioCalling: '📞 Audio call korchi...',
+    inVideoCall: '📹 Incoming Video Call...',
+    inAudioCall: '📞 Incoming Audio Call...',
+    videoConnected: '📹 Video call connected',
+    audioConnected: '🔊 Audio call connected',
+    callEnded: 'Call sesh hoyeche',
+    callDeclined: 'Call decline kora hoyeche',
     nameLabel: 'Naam',
     aboutLabel: 'About',
     langLabel: 'App Language (Bhasha)',
-    langBanglish: 'Banglish (Ekhon jeta ache)',
-    langBn: 'Proper Bangla (শুদ্ধ বাংলা)',
-    langEn: 'Proper English (English)',
+    langBanglish: 'Banglish',
+    langBn: 'শুদ্ধ বাংলা (Bangla)',
+    langEn: 'Proper English',
     saveBtn: 'Save korun',
     unCard: '🆔 Username Bodlan',
     unPh: 'Notun username (a-z, 0-9, _)',
@@ -254,6 +294,10 @@ const I18N = {
     emBtn: 'Email Update Korun',
     sndCard: '🔔 Ringtone & Sound',
     ringToggle: 'Ringtone & Notification Sound',
+    darkToggle: '🌙 Dark Mode',
+    lseenToggle: 'Online & Last Seen dekhano',
+    receiptToggle: 'Read Receipts (✓✓ Seen) pathano',
+    pinLabel: 'App Lock PIN (khali rakhle off)',
     blkCard: '🚫 Block List Manager',
     noBlk: 'Kono blocked user nei.',
     unblkBtn: 'Unblock',
@@ -265,7 +309,16 @@ const I18N = {
     delBtn: 'Account Delete Korun',
     copyBtn: 'Copy',
     copied: 'Copy hoyeche',
-    seenBy: 'Seen by'
+    seenBy: 'Seen by',
+    replyBtn: 'Reply',
+    forwardBtn: 'Forward',
+    editBtn: 'Edit',
+    deleteBtn: 'Delete',
+    starBtn: 'Star',
+    unstarBtn: 'Unstar',
+    pinBtn: 'Pin',
+    unpinBtn: 'Unpin',
+    selectBtn: 'Select'
   },
   bn: {
     appName: 'আমার চ্যাট',
@@ -273,13 +326,42 @@ const I18N = {
     chatsTab: '💬 চ্যাট',
     statusTab: '🟢 স্ট্যাটাস',
     callsTab: '📞 কল',
+    searchChats: '🔍 চ্যাট বা বন্ধু খুঁজুন...',
+    noChats: 'কোনো চ্যাট নেই। নিচে + চেপে বন্ধু খুঁজুন।',
+    noSearch: 'কোনো চ্যাট খুঁজে পাওয়া যায়নি।',
+    noArch: 'কোনো আর্কাইভড চ্যাট নেই।',
+    archChats: '📦 আর্কাইভড চ্যাট',
+    backAllChats: '← সব চ্যাটে ফিরে যান',
+    newChat: '👤 নতুন চ্যাট',
+    newGroup: '👥 নতুন গ্রুপ',
+    postStatusMenu: '🟢 স্ট্যাটাস পোস্ট করুন',
+    starredMenu: '⭐ তারকাচিহ্নিত বার্তা',
     settingsTitle: '⚙️ সেটিংস',
+    newStatusBar: '+ নতুন স্ট্যাটাস পোস্ট করুন',
+    noStatus: 'এখন কোনো সক্রিয় স্ট্যাটাস নেই।',
+    noCalls: 'কোনো কল ইতিহাস নেই।',
+    msgPlaceholder: 'বার্তা লিখুন...',
+    online: '🟢 অনলাইন',
+    lastSeen: 'সর্বশেষ দেখা গেছে',
+    sendBtn: '⏹ পাঠান',
+    cancelBtn: '✕ বাতিল',
+    photoSent: 'ছবি পাঠানো হয়েছে',
+    voiceSent: 'ভয়েস বার্তা পাঠানো হয়েছে',
+    callConnecting: 'সংযোগ করা হচ্ছে...',
+    videoCalling: '📹 ভিডিও কল করা হচ্ছে...',
+    audioCalling: '📞 অডিও কল করা হচ্ছে...',
+    inVideoCall: '📹 ইনকামিং ভিডিও কল...',
+    inAudioCall: '📞 ইনকামিং অডিও কল...',
+    videoConnected: '📹 ভিডিও কল যুক্ত হয়েছে',
+    audioConnected: '🔊 অডিও কল যুক্ত হয়েছে',
+    callEnded: 'কল শেষ হয়েছে',
+    callDeclined: 'কল প্রত্যাখ্যান করা হয়েছে',
     nameLabel: 'নাম',
-    aboutLabel: 'পরিচিতি (About)',
+    aboutLabel: 'পরিচিতি',
     langLabel: 'অ্যাপের ভাষা',
-    langBanglish: 'বাংলায় ইংরেজি হরফ (Banglish)',
-    langBn: 'শুদ্ধ বাংলা (বাংলা)',
-    langEn: 'ইংরেজি (English)',
+    langBanglish: 'Banglish',
+    langBn: 'শুদ্ধ বাংলা',
+    langEn: 'English',
     saveBtn: 'সংরক্ষণ করুন',
     unCard: '🆔 ইউজারনেম পরিবর্তন',
     unPh: 'নতুন ইউজারনেম (a-z, 0-9, _)',
@@ -290,6 +372,10 @@ const I18N = {
     emBtn: 'ইমেইল আপডেট করুন',
     sndCard: '🔔 রিংটোন ও সাউন্ড',
     ringToggle: 'রিংটোন ও নোটিফিকেশন সাউন্ড',
+    darkToggle: '🌙 ডার্ক মোড',
+    lseenToggle: 'অনলাইন ও সর্বশেষ দেখা দেখান',
+    receiptToggle: 'রিড রিসিপ্ট (✓✓ Seen) পাঠান',
+    pinLabel: 'অ্যাপ লক পিন (খালি রাখলে বন্ধ)',
     blkCard: '🚫 ব্লক তালিকা',
     noBlk: 'কেউ ব্লক করা নেই।',
     unblkBtn: 'আনব্লক',
@@ -301,7 +387,16 @@ const I18N = {
     delBtn: 'অ্যাকাউন্ট মুছে ফেলুন',
     copyBtn: 'কপি',
     copied: 'কপি করা হয়েছে',
-    seenBy: 'দেখেছেন'
+    seenBy: 'দেখেছেন',
+    replyBtn: 'উত্তর',
+    forwardBtn: 'ফরওয়ার্ড',
+    editBtn: 'সম্পাদনা',
+    deleteBtn: 'মুছুন',
+    starBtn: 'তারকা দিন',
+    unstarBtn: 'তারকা সরান',
+    pinBtn: 'পিন করুন',
+    unpinBtn: 'আনপিন',
+    selectBtn: 'নির্বাচন'
   },
   en: {
     appName: 'Amar Chat',
@@ -309,14 +404,43 @@ const I18N = {
     chatsTab: '💬 Chats',
     statusTab: '🟢 Status',
     callsTab: '📞 Calls',
+    searchChats: '🔍 Search chats or friends...',
+    noChats: 'No chats yet. Tap + below to find a friend.',
+    noSearch: 'No matching chats found.',
+    noArch: 'No archived chats.',
+    archChats: '📦 Archived Chats',
+    backAllChats: '← Back to all chats',
+    newChat: '👤 New Chat',
+    newGroup: '👥 New Group',
+    postStatusMenu: '🟢 Post Status',
+    starredMenu: '⭐ Starred Messages',
     settingsTitle: '⚙️ Settings',
+    newStatusBar: '+ Post a New Status',
+    noStatus: 'No active statuses right now.',
+    noCalls: 'No call history.',
+    msgPlaceholder: 'Type a message...',
+    online: '🟢 Online',
+    lastSeen: 'Last seen',
+    sendBtn: '⏹ Send',
+    cancelBtn: '✕ Cancel',
+    photoSent: 'Photo sent',
+    voiceSent: 'Voice message sent',
+    callConnecting: 'Connecting...',
+    videoCalling: '📹 Calling (Video)...',
+    audioCalling: '📞 Calling (Audio)...',
+    inVideoCall: '📹 Incoming Video Call...',
+    inAudioCall: '📞 Incoming Audio Call...',
+    videoConnected: '📹 Video call connected',
+    audioConnected: '🔊 Audio call connected',
+    callEnded: 'Call ended',
+    callDeclined: 'Call declined',
     nameLabel: 'Name',
     aboutLabel: 'About',
     langLabel: 'App Language',
     langBanglish: 'Banglish',
-    langBn: 'Proper Bangla (বাংলা)',
+    langBn: 'শুদ্ধ বাংলা (Bangla)',
     langEn: 'Proper English',
-    saveBtn: 'Save',
+    saveBtn: 'Save Changes',
     unCard: '🆔 Change Username',
     unPh: 'New username (a-z, 0-9, _)',
     unBtn: 'Update Username',
@@ -326,18 +450,31 @@ const I18N = {
     emBtn: 'Update Email',
     sndCard: '🔔 Ringtone & Sound',
     ringToggle: 'Ringtone & Notification Sound',
-    blkCard: '🚫 Block List Manager',
+    darkToggle: '🌙 Dark Mode',
+    lseenToggle: 'Show Online & Last Seen',
+    receiptToggle: 'Send Read Receipts (✓✓ Seen)',
+    pinLabel: 'App Lock PIN (leave empty to disable)',
+    blkCard: '🚫 Blocked Users',
     noBlk: 'No blocked users.',
     unblkBtn: 'Unblock',
     pwCard: '🔑 Change Password',
-    pwPh: 'New password (at least 6 chars)',
+    pwPh: 'New password (min 6 characters)',
     pwBtn: 'Update Password',
     delCard: '⚠️ Delete Account',
     delHint: 'Deleting your account permanently cannot be undone.',
     delBtn: 'Delete Account',
     copyBtn: 'Copy',
     copied: 'Copied',
-    seenBy: 'Seen by'
+    seenBy: 'Seen by',
+    replyBtn: 'Reply',
+    forwardBtn: 'Forward',
+    editBtn: 'Edit',
+    deleteBtn: 'Delete',
+    starBtn: 'Star',
+    unstarBtn: 'Unstar',
+    pinBtn: 'Pin',
+    unpinBtn: 'Unpin',
+    selectBtn: 'Select'
   }
 };
 
@@ -368,13 +505,10 @@ const isDarkMode = () => !!profile?.darkMode;
 const isSoundEnabled = () => profile?.soundEnabled !== false;
 const UN_RE = /^[a-z0-9_]{3,20}$/;
 const normUn = s => String(s || '').trim().toLowerCase().replace(/^@/, '');
-const UN_HELP = 'Username e shudhu english okkhor, songkha ar _ hote pare (3 theke 20 ta). Phone number o dite paren (shudhu songkha).';
+const UN_HELP = 'Username: 3-20 chars (a-z, 0-9, _).';
 const MEDIA_OK = /^(data:(image|audio)\/[a-z0-9.+-]+(;[^;,]+)*;base64,|https:\/\/firebasestorage\.googleapis\.com\/)/i;
-const DOC_OK = /^(data:[a-z0-9.+-]+\/[a-z0-9.+-]+(;[^;,]+)*;base64,|https:\/\/firebasestorage\.googleapis\.com\/)/i;
 const safeMedia = u => (typeof u === 'string' && MEDIA_OK.test(u)) ? u : '';
-const safeDoc = u => (typeof u === 'string' && DOC_OK.test(u)) ? u : '';
-const isOnline = p => !!(p && p.online && p.lastSeen && p.lastSeen.toMillis && (Date.now() - p.lastSeen.toMillis() < 120000));
-const isTyping = v => typeof v === 'number' && v > 0 && (Date.now() - v) < 6000;
+const isOnline = p => !!(p && p.online && p.lastSeen && p.lastSeen.toMillis && (Date.now() - p.lastSeen.toMillis() < 180000));
 const tsMs = ts => ts && ts.toMillis ? ts.toMillis() : (typeof ts === 'number' ? ts : 0);
 
 function getDraft(cid) {
@@ -433,7 +567,6 @@ function goToChatList() {
 }
 
 window.addEventListener('popstate', () => {
-  if (suppressPopstate) return;
   const lb = document.querySelector('.lbox');
   if (lb) { lb.remove(); ensureRootHistoryAnchor(); return; }
   const modal = document.querySelector('.modal');
@@ -507,8 +640,8 @@ function pinLockView(onSuccess) {
   $app.innerHTML = `
     <div class="auth">
       <h1>🔐 Chat Lock</h1>
-      <p class="hint" style="text-align:center">App khulte apnar 4-6 digit PIN din.</p>
-      <input type="password" id="pinin" placeholder="PIN din" maxlength="6" inputmode="numeric">
+      <p class="hint" style="text-align:center">Enter your 4-6 digit PIN.</p>
+      <input type="password" id="pinin" placeholder="PIN" maxlength="6" inputmode="numeric">
       <p class="err" id="pinerr"></p>
       <button class="btn" id="pinok">Unlock</button>
       <button class="link" id="pinlo">${esc(tr('logout'))}</button>
@@ -520,7 +653,7 @@ function pinLockView(onSuccess) {
       appUnlocked = true;
       onSuccess();
     } else {
-      document.getElementById('pinerr').textContent = 'Vul PIN! Abar chesta korun.';
+      document.getElementById('pinerr').textContent = 'Invalid PIN.';
     }
   };
   document.getElementById('pinok').onclick = check;
@@ -530,7 +663,7 @@ function pinLockView(onSuccess) {
 /* ---------- RINGTONE & NOTIFICATION SOUND ---------- */
 let ringtoneInterval = null;
 
-function playAlertBeep(freq = 740, duration = 0.18) {
+function playAlertBeep(freq = 740, duration = 0.16) {
   if (!isSoundEnabled()) return;
   try {
     const AudioCtx = window.AudioContext || window.webkitAudioContext;
@@ -540,7 +673,7 @@ function playAlertBeep(freq = 740, duration = 0.18) {
     const gain = ctx.createGain();
     osc.type = 'sine';
     osc.frequency.value = freq;
-    gain.gain.setValueAtTime(0.08, ctx.currentTime);
+    gain.gain.setValueAtTime(0.07, ctx.currentTime);
     gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + duration);
     osc.connect(gain);
     gain.connect(ctx.destination);
@@ -555,83 +688,56 @@ function startRingtone() {
   if (!isSoundEnabled()) return;
   const pulse = () => {
     if (!isSoundEnabled()) return;
-    playAlertBeep(880, 0.22);
-    setTimeout(() => playAlertBeep(1046, 0.22), 260);
+    playAlertBeep(880, 0.2);
+    setTimeout(() => playAlertBeep(1046, 0.2), 250);
   };
   pulse();
-  ringtoneInterval = setInterval(pulse, 1400);
+  ringtoneInterval = setInterval(pulse, 1500);
 }
 
 function stopRingtone() {
   if (ringtoneInterval) { clearInterval(ringtoneInterval); ringtoneInterval = null; }
 }
 
-async function ensureNotifPermission() {
-  try {
-    if ('Notification' in window && Notification.permission === 'default') {
-      await Notification.requestPermission();
-    }
-  } catch (e) {}
-}
-
 function triggerNotification(title, body, isCall = false) {
-  if (!isCall) playAlertBeep(660, 0.16);
+  if (!isCall) playAlertBeep(660, 0.15);
   toast(`${title}: ${body}`);
-  try {
-    if ('Notification' in window && Notification.permission === 'granted' && (document.hidden || isCall)) {
-      const n = new Notification(title, { body, silent: !isSoundEnabled() });
-      n.onclick = () => { window.focus(); n.close(); };
-    }
-  } catch (e) {}
 }
 
+// Low-read alert listener: watches `chats` docs only (no per-chat `messages` listeners!)
 function watchChatNotifications() {
-  if (msgAlertUnsub) { msgAlertUnsub(); msgAlertUnsub = null; }
+  if (chatAlertUnsub) { chatAlertUnsub(); chatAlertUnsub = null; }
   if (!me) return;
-  const perChatUnsubs = {};
+  let initial = true;
 
-  msgAlertUnsub = db.collection('chats').where('members', 'array-contains', me.uid).onSnapshot(snap => {
-    const activeIds = new Set();
+  chatAlertUnsub = db.collection('chats').where('members', 'array-contains', me.uid).limit(25).onSnapshot(snap => {
     mutedChatIds.clear();
     snap.docs.forEach(d => {
-      const cid = d.id;
-      const cdata = d.data();
-      if (cdata.mutedBy?.[me.uid]) mutedChatIds.add(cid);
-      activeIds.add(cid);
-      if (!perChatUnsubs[cid]) {
-        let firstSnap = true;
-        perChatUnsubs[cid] = d.ref.collection('messages').orderBy('createdAt', 'desc').limit(5).onSnapshot(mSnap => {
-          if (firstSnap) {
-            firstSnap = false;
-            mSnap.docs.forEach(md => notifiedMsgIds.add(md.id));
-            return;
-          }
-          mSnap.docChanges().forEach(ch => {
-            if (ch.type !== 'added') return;
-            const mid = ch.doc.id;
-            if (notifiedMsgIds.has(mid)) return;
-            notifiedMsgIds.add(mid);
-            const m = ch.doc.data();
-            if (!m || m.senderId === me.uid || m.deleted) return;
-            if (myBlocked().includes(m.senderId)) return;
-            if (mutedChatIds.has(cid)) return;
-            if (currentOpenChatId === cid && !document.hidden) return;
-            const preview = m.text || (m.docName ? `📄 ${m.docName}` : m.audio ? '🎤 Voice message' : m.image ? '📷 Photo' : 'Notun message');
-            triggerNotification(m.senderName || tr('appName'), preview, false);
-          });
-        }, () => {});
-      }
+      const c = d.data();
+      if (c.mutedBy?.[me.uid]) mutedChatIds.add(d.id);
     });
-    Object.keys(perChatUnsubs).forEach(cid => {
-      if (!activeIds.has(cid)) {
-        try { perChatUnsubs[cid](); } catch (e) {}
-        delete perChatUnsubs[cid];
-      }
+    if (initial) {
+      initial = false;
+      snap.docs.forEach(d => { lastAlertByChat[d.id] = tsMs(d.data().updatedAt); });
+      return;
+    }
+    snap.docChanges().forEach(ch => {
+      if (ch.type !== 'added' && ch.type !== 'modified') return;
+      const cid = ch.doc.id;
+      const c = ch.doc.data();
+      const upd = tsMs(c.updatedAt);
+      if (!upd || upd <= (lastAlertByChat[cid] || 0)) return;
+      lastAlertByChat[cid] = upd;
+      if (mutedChatIds.has(cid)) return;
+      if (currentOpenChatId === cid && !document.hidden) return;
+      if (!c.lastMessage) return;
+      const title = c.isGroup ? (c.name || 'Group') : (c.memberNames ? Object.entries(c.memberNames).find(([k]) => k !== me.uid)?.[1] : tr('appName'));
+      triggerNotification(title || tr('appName'), c.lastMessage, false);
     });
   }, () => {});
 }
 
-/* ---------- WEBRTC AUDIO + VIDEO CALL ENGINE + CAMERA SWITCH + CALL LOG ---------- */
+/* ---------- WEBRTC AUDIO + VIDEO CALL ENGINE ---------- */
 let pc = null, localStream = null, remoteStream = null, activeCallId = null, callUnsubs = [], micMuted = false, camOff = false;
 let currentCallMeta = null, isSettingRemote = false, currentFacingMode = 'user', callIsVideo = false;
 
@@ -651,7 +757,7 @@ function syncMediaElements() {
     $remA.volume = 1.0;
     $remA.play().catch(() => {});
 
-    const hasVideo = remoteStream.getVideoTracks().some(t => t.readyState === 'live') || remoteStream.getVideoTracks().length > 0 || callIsVideo;
+    const hasVideo = remoteStream.getVideoTracks().length > 0 || callIsVideo;
     if (hasVideo) {
       callIsVideo = true;
       $cav.style.display = 'none';
@@ -699,27 +805,21 @@ async function switchCallCamera() {
   const nextMode = currentFacingMode === 'user' ? 'environment' : 'user';
   try {
     const newVidStream = await navigator.mediaDevices.getUserMedia({
-      video: { facingMode: { ideal: nextMode }, width: { ideal: 640 }, height: { ideal: 480 } },
+      video: { facingMode: { ideal: nextMode }, width: { ideal: 480 }, height: { ideal: 360 } },
       audio: false
     });
     const newTrack = newVidStream.getVideoTracks()[0];
     if (!newTrack) return;
-
     const oldTrack = localStream.getVideoTracks()[0];
     const sender = pc.getSenders().find(s => s.track && s.track.kind === 'video');
     if (sender) await sender.replaceTrack(newTrack);
-
-    if (oldTrack) {
-      oldTrack.stop();
-      localStream.removeTrack(oldTrack);
-    }
+    if (oldTrack) { oldTrack.stop(); localStream.removeTrack(oldTrack); }
     localStream.addTrack(newTrack);
     currentFacingMode = nextMode;
     camOff = false;
     syncMediaElements();
-    toast(nextMode === 'environment' ? 'Back camera active' : 'Front camera active');
   } catch (e) {
-    toast('Camera switch kora jayni: ' + (e.message || ''));
+    toast('Camera switch error');
   }
 }
 
@@ -850,24 +950,14 @@ async function setupPeer(callDocRef, isCaller, isVideo) {
   $remV.srcObject = remoteStream;
   $remV.muted = false;
 
-  const audioConstraints = {
-    echoCancellation: { ideal: true },
-    noiseSuppression: { ideal: true },
-    autoGainControl: { ideal: false },
-    googEchoCancellation: true,
-    googNoiseSuppression: true,
-    googAutoGainControl: false,
-    googHighpassFilter: true
-  };
-
+  const audioConstraints = { echoCancellation: true, noiseSuppression: true };
   try {
     localStream = await navigator.mediaDevices.getUserMedia({
       audio: audioConstraints,
-      video: isVideo ? { facingMode: { ideal: 'user' }, width: { ideal: 640 }, height: { ideal: 480 } } : false
+      video: isVideo ? { facingMode: { ideal: 'user' }, width: { ideal: 480 }, height: { ideal: 360 } } : false
     });
   } catch (err) {
     if (isVideo) {
-      toast('Camera payni, audio call-e chesta korchi...');
       localStream = await navigator.mediaDevices.getUserMedia({ audio: audioConstraints, video: false });
       isVideo = false;
       callIsVideo = false;
@@ -889,7 +979,7 @@ async function setupPeer(callDocRef, isCaller, isVideo) {
   pc.ontrack = e => {
     attachRemoteTrack(e.track, e.streams && e.streams[0]);
     const hasVid = remoteStream.getVideoTracks().length > 0 || callIsVideo;
-    $cst.textContent = hasVid ? '📹 Video call connected' : '🔊 Audio call connected';
+    $cst.textContent = hasVid ? tr('videoConnected') : tr('audioConnected');
   };
 
   pc.oniceconnectionstatechange = () => {
@@ -897,23 +987,10 @@ async function setupPeer(callDocRef, isCaller, isVideo) {
     if (pc.iceConnectionState === 'connected' || pc.iceConnectionState === 'completed') {
       syncMediaElements();
       const hasVid = (remoteStream && remoteStream.getVideoTracks().length > 0) || callIsVideo;
-      $cst.textContent = hasVid ? '📹 Video call connected' : '🔊 Audio call connected';
+      $cst.textContent = hasVid ? tr('videoConnected') : tr('audioConnected');
     } else if (pc.iceConnectionState === 'failed') {
-      toast('Network / ICE connection fail koreche');
-      endCall(true);
-    }
-  };
-
-  pc.onconnectionstatechange = () => {
-    if (!pc) return;
-    if (pc.connectionState === 'connected') {
-      syncMediaElements();
-      const hasVid = (remoteStream && remoteStream.getVideoTracks().length > 0) || callIsVideo;
-      $cst.textContent = hasVid ? '📹 Video call connected' : '🔊 Audio call connected';
-    } else if (pc.connectionState === 'disconnected') {
-      $cst.textContent = 'Connection interrupted...';
-    } else if (pc.connectionState === 'failed') {
-      toast('Call connect hoyni (network shomossha)');
+      const hint = TURN_SERVERS.length === 0 ? ' (Add TURN server in TURN_SERVERS for long-distance)' : '';
+      toast('Call connection failed' + hint);
       endCall(true);
     }
   };
@@ -925,63 +1002,54 @@ async function setupPeer(callDocRef, isCaller, isVideo) {
     if (e.candidate) candCol.add(e.candidate.toJSON()).catch(() => {});
   };
 
-  const unsubCands = remoteCandCol.onSnapshot(snap => {
-    snap.docChanges().forEach(ch => {
-      if (ch.type === 'added') pendingCands.push(ch.doc.data());
-    });
+  callUnsubs.push(remoteCandCol.onSnapshot(snap => {
+    snap.docChanges().forEach(ch => { if (ch.type === 'added') pendingCands.push(ch.doc.data()); });
     flushCands();
-  }, () => {});
-  callUnsubs.push(unsubCands);
+  }, () => {}));
 
   let seen = false;
-  const unsubDoc = callDocRef.onSnapshot(snap => {
+  callUnsubs.push(callDocRef.onSnapshot(snap => {
     if (!snap.exists) { if (seen) endCall(false); return; }
     seen = true;
     const d = snap.data();
     if (d.status === 'ended' || d.status === 'declined') {
       if (currentCallMeta) currentCallMeta.outcome = d.status === 'declined' ? 'declined' : 'completed';
-      toast(d.status === 'declined' ? 'Call decline kora hoyeche' : 'Call sesh hoyeche');
+      toast(d.status === 'declined' ? tr('callDeclined') : tr('callEnded'));
       endCall(false);
     }
-  }, () => {});
-  callUnsubs.push(unsubDoc);
+  }, () => {}));
 }
 
 async function startCall(peerUid, peerName, isVideo) {
   if (!me || !peerUid) return;
-  if (myBlocked().includes(peerUid)) { toast('Apni ei user-ke block kore rekhechen'); return; }
-  if (activeCallId) { toast('Agei ekta call cholche'); return; }
+  if (myBlocked().includes(peerUid)) { toast('User is blocked'); return; }
+  if (activeCallId) { toast('Call already active'); return; }
   if (!navigator.mediaDevices?.getUserMedia || !window.RTCPeerConnection) {
-    toast('Ei browser-e call supported noy'); return;
+    toast('Calls not supported in this browser'); return;
   }
-  await ensureNotifPermission();
   const callDoc = db.collection('calls').doc();
   activeCallId = callDoc.id;
   currentCallMeta = { peerUid, peerName, isVideo: !!isVideo, direction: 'outgoing', outcome: 'outgoing' };
-  showCallUI(peerName, isVideo ? '📹 Video call korchi...' : '📞 Audio call korchi...', isVideo, 'active');
+  showCallUI(peerName, isVideo ? tr('videoCalling') : tr('audioCalling'), isVideo, 'active');
 
   try {
     await setupPeer(callDoc, true, isVideo);
     const offer = await pc.createOffer({ offerToReceiveAudio: true, offerToReceiveVideo: !!isVideo });
     await pc.setLocalDescription(offer);
     await callDoc.set({
-      callerId: me.uid,
-      callerName: myName(),
-      calleeId: peerUid,
-      calleeName: peerName,
-      participants: [me.uid, peerUid],
-      isVideo: !!isVideo,
-      status: 'ringing',
+      callerId: me.uid, callerName: myName(),
+      calleeId: peerUid, calleeName: peerName,
+      isVideo: !!isVideo, status: 'ringing',
       offer: { type: offer.type, sdp: offer.sdp },
       createdAt: firebase.firestore.FieldValue.serverTimestamp()
     });
 
-    const unsubAns = callDoc.onSnapshot(async snap => {
+    callUnsubs.push(callDoc.onSnapshot(async snap => {
       if (!snap.exists || !pc || isSettingRemote) return;
       const d = snap.data();
       if (d.status === 'declined') {
         if (currentCallMeta) currentCallMeta.outcome = 'declined';
-        toast('Call decline kora hoyeche');
+        toast(tr('callDeclined'));
         endCall(false);
         return;
       }
@@ -990,52 +1058,38 @@ async function startCall(peerUid, peerName, isVideo) {
         if (currentCallMeta) currentCallMeta.outcome = 'connected';
         try {
           await pc.setRemoteDescription(new RTCSessionDescription(d.answer));
-          $cst.textContent = 'Connecting...';
+          $cst.textContent = tr('callConnecting');
           syncMediaElements();
           await flushCands();
         } catch (e) {
-          toast('Answer error: ' + e.message);
+          toast('Answer error');
         } finally {
           isSettingRemote = false;
         }
       }
-    }, err => toast('Call sync error: ' + err.message));
-    callUnsubs.push(unsubAns);
+    }, () => {}));
 
     const myCallId = callDoc.id;
     ringTimer = setTimeout(() => {
       if (activeCallId === myCallId && pc && !pc.remoteDescription) {
         if (currentCallMeta) currentCallMeta.outcome = 'missed';
-        toast('Keu call dhorenni');
         endCall(true);
       }
-    }, 45000);
+    }, 40000);
   } catch (e) {
-    toast('Call shuru kora jayni: ' + (e.message || 'Mic/Camera permission din'));
+    toast('Call error: ' + (e.message || 'Check mic/camera permission'));
     endCall(true);
   }
 }
 
 async function acceptCall(callData, callDoc) {
   stopRingtone();
-  if (activeCallId) return;
-  if (!callData?.offer?.sdp) {
-    toast('Call offer pawa jayni');
-    ringingCallId = null;
-    hideCallUI();
-    return;
-  }
+  if (activeCallId || !callData?.offer?.sdp) { ringingCallId = null; hideCallUI(); return; }
   const isVideo = !!callData.isVideo;
   ringingCallId = null;
   activeCallId = callDoc.id;
-  currentCallMeta = {
-    peerUid: callData.callerId,
-    peerName: callData.callerName || 'User',
-    isVideo,
-    direction: 'incoming',
-    outcome: 'answered'
-  };
-  showCallUI(callData.callerName || 'User', 'Connecting...', isVideo, 'active');
+  currentCallMeta = { peerUid: callData.callerId, peerName: callData.callerName || 'User', isVideo, direction: 'incoming', outcome: 'answered' };
+  showCallUI(callData.callerName || 'User', tr('callConnecting'), isVideo, 'active');
 
   try {
     await setupPeer(callDoc, false, isVideo);
@@ -1046,12 +1100,9 @@ async function acceptCall(callData, callDoc) {
     const answer = await pc.createAnswer();
     await pc.setLocalDescription(answer);
     syncMediaElements();
-    await callDoc.update({
-      status: 'accepted',
-      answer: { type: answer.type, sdp: answer.sdp }
-    });
+    await callDoc.update({ status: 'accepted', answer: { type: answer.type, sdp: answer.sdp } });
   } catch (e) {
-    toast('Call receive kora jayni: ' + (e.message || 'Mic/Camera permission din'));
+    toast('Accept call error');
     endCall(true);
   }
 }
@@ -1063,76 +1114,56 @@ function listenIncomingCalls() {
 
   callWatchUnsub = db.collection('calls')
     .where('calleeId', '==', me.uid)
+    .limit(5)
     .onSnapshot(snap => {
       if (!initialLoadDone) {
         initialLoadDone = true;
         snap.docs.forEach(docSnap => {
           const d = docSnap.data() || {};
-          const age = Date.now() - tsMs(d.createdAt);
-          if (d.status === 'ringing' && age < 60000 && !activeCallId && !ringingCallId) {
+          if (d.status === 'ringing' && (Date.now() - tsMs(d.createdAt)) < 60000 && !activeCallId && !ringingCallId) {
             presentIncoming(docSnap.id, d, docSnap.ref);
           }
         });
         return;
       }
-
       snap.docChanges().forEach(ch => {
         const id = ch.doc.id;
         const d = ch.doc.data() || {};
-
         if (ch.type === 'removed' || (d.status && d.status !== 'ringing')) {
           if (ringingCallId === id) {
             ringingCallId = null;
             stopRingtone();
             if (!activeCallId) hideCallUI();
-            if (d.status === 'ended') {
-              logCallHistory(d.callerId, d.callerName || 'User', !!d.isVideo, 'incoming', 'missed');
-            }
+            if (d.status === 'ended') logCallHistory(d.callerId, d.callerName || 'User', !!d.isVideo, 'incoming', 'missed');
           }
           return;
         }
-
         if (ch.type === 'added' && d.status === 'ringing' && !activeCallId && !ringingCallId) {
           presentIncoming(id, d, ch.doc.ref);
         }
       });
-    }, err => {
-      toast('Incoming call listener error: ' + (err.message || err.code));
-    });
+    }, () => {});
 
   function presentIncoming(id, d, docRef) {
     if (myBlocked().includes(d.callerId)) return;
     ringingCallId = id;
-    triggerNotification(
-      d.callerName || tr('appName'),
-      d.isVideo ? '📹 Incoming Video Call...' : '📞 Incoming Audio Call...',
-      true
-    );
-    showCallUI(
-      d.callerName || 'User',
-      d.isVideo ? '📹 Incoming Video Call...' : '📞 Incoming Audio Call...',
-      !!d.isVideo,
-      'incoming'
-    );
-
+    triggerNotification(d.callerName || tr('appName'), d.isVideo ? tr('inVideoCall') : tr('inAudioCall'), true);
+    showCallUI(d.callerName || 'User', d.isVideo ? tr('inVideoCall') : tr('inAudioCall'), !!d.isVideo, 'incoming');
     const decBtn = document.getElementById('cdec');
     const accBtn = document.getElementById('cacc');
     if (decBtn) {
       decBtn.onclick = async () => {
-        ringingCallId = null;
-        stopRingtone();
+        ringingCallId = null; stopRingtone();
         await logCallHistory(d.callerId, d.callerName || 'User', !!d.isVideo, 'incoming', 'missed');
         try { await docRef.update({ status: 'declined' }); } catch (e) {}
         hideCallUI();
       };
     }
-    if (accBtn) {
-      accBtn.onclick = () => acceptCall(d, docRef);
-    }
+    if (accBtn) accBtn.onclick = () => acceptCall(d, docRef);
   }
 }
 
-/* ---------- ONLINE STATUS (presence) ---------- */
+/* ---------- LIGHTWEIGHT PRESENCE (LOW WRITES) ---------- */
 async function setOnline(online) {
   if (!me || !profile) return;
   try {
@@ -1147,7 +1178,7 @@ function startPresence() {
   stopPresence();
   const visible = () => document.visibilityState === 'visible';
   setOnline(visible());
-  presenceTimer = setInterval(() => { if (visible()) setOnline(true); }, 45000);
+  presenceTimer = setInterval(() => { if (visible()) setOnline(true); }, 180000);
   const onVis = () => setOnline(visible());
   const onOff = () => setOnline(false);
   document.addEventListener('visibilitychange', onVis);
@@ -1165,18 +1196,16 @@ function stopPresence() {
 
 function fmtStatus(p, canSee = true) {
   if (!canSee || !p) return '';
-  if (isOnline(p)) return '🟢 Online';
+  if (isOnline(p)) return tr('online');
   const d = p.lastSeen?.toDate?.();
   if (!d) return '';
-  const hh = String(d.getHours()).padStart(2, '0');
-  const mm = String(d.getMinutes()).padStart(2, '0');
-  return `Last seen ${hh}:${mm}`;
+  return `${tr('lastSeen')} ${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
 }
 
 auth.onAuthStateChanged(async u => {
   me = u; stop(); stopPresence(); appUnlocked = false;
   if (callWatchUnsub) { callWatchUnsub(); callWatchUnsub = null; }
-  if (msgAlertUnsub) { msgAlertUnsub(); msgAlertUnsub = null; }
+  if (chatAlertUnsub) { chatAlertUnsub(); chatAlertUnsub = null; }
   await endCall(false);
   if (!u) { profile = null; applyTheme(); authView(true); return; }
   if (signingUp) return;
@@ -1187,30 +1216,29 @@ function gate() {
   if (!me.emailVerified) verifyView(); else route();
 }
 
-/* ---------- EMAIL VERIFY ---------- */
 function verifyView(msg = '', good = false) {
   stop();
   currentScreenName = 'verify';
   applyTheme();
   $app.innerHTML = `
     <div class="auth">
-      <h1>📧 Email verify korun</h1>
-      <p class="hint">Apnar email <b>${esc(me.email)}</b> e ekta link pathano hoyeche. Email kholun (Spam folder o dekhun), link e chapun. Tarpor niche button chapun.</p>
+      <h1>📧 Verify Email</h1>
+      <p class="hint">Verification link sent to <b>${esc(me.email)}</b>. Check Inbox/Spam, click the link, then press below.</p>
       ${msg ? `<p class="${good ? 'ok' : 'err'}">${esc(msg)}</p>` : ''}
-      <button class="btn" id="ok">Ami verify korechi</button>
-      <button class="link" id="rs">Abar email pathan</button>
+      <button class="btn" id="ok">I have verified</button>
+      <button class="link" id="rs">Resend verification email</button>
       <button class="link" id="lo">${esc(tr('logout'))}</button>
     </div>`;
   document.getElementById('lo').onclick = () => auth.signOut();
   document.getElementById('rs').onclick = async () => {
-    try { await me.sendEmailVerification(); verifyView('Notun email pathano hoyeche.', true); }
+    try { await me.sendEmailVerification(); verifyView('Verification email sent.', true); }
     catch (ex) { verifyView(ex.message); }
   };
   document.getElementById('ok').onclick = async () => {
     try {
       await me.reload();
       if (me.emailVerified) { await me.getIdToken(true); route(); }
-      else verifyView('Ekhono verify hoyni. Email er link e chapun, tarpor abar chesta korun.');
+      else verifyView('Not verified yet.');
     } catch (ex) { verifyView(ex.message); }
   };
 }
@@ -1223,7 +1251,6 @@ async function route() {
       if (!profile.lang) profile.lang = currentLang();
       localStorage.setItem('amar_chat_lang', profile.lang);
       applyTheme();
-      ensureNotifPermission();
       startPresence();
       listenIncomingCalls();
       watchChatNotifications();
@@ -1254,124 +1281,90 @@ async function claimUsername(username, name) {
   profile = baseDoc;
 }
 
-/* ---------- LOGIN / SIGNUP + PASSWORD RESET ---------- */
 function authView(isLogin, err = '', okMsg = '', prefEmail = '') {
   currentScreenName = 'auth';
-  let friendlyErr = err;
-  if (err && (err.includes('INVALID_LOGIN_CREDENTIALS') || err.includes('invalid-credential') || err.includes('wrong-password'))) {
-    friendlyErr = 'Email ba Password vul ache. Abar check korun ba "Password bhule gechen?" chapun.';
-  } else if (err && err.includes('user-not-found')) {
-    friendlyErr = 'Ei email-e kono account nei. Age "Notun? Account kholun" diye account toiri korun.';
-  } else if (err && err.includes('too-many-requests')) {
-    friendlyErr = 'Onekbar vul chesta kora hoyeche. Kichu somoy por abar chesta korun.';
-  }
-
   $app.innerHTML = `
     <div class="auth">
       <h1>💬 ${esc(tr('appName'))}</h1>
-      ${isLogin ? '' : `
-        <input type="text" id="nm" placeholder="Apnar naam">
-        <p class="hint">Email verify korar por apni nijer username ba phone number thik korben.</p>`}
+      ${isLogin ? '' : `<input type="text" id="nm" placeholder="Your Name">`}
       <input type="email" id="em" placeholder="Email" value="${esc(prefEmail)}" autocomplete="email">
-      <input type="password" id="pw" placeholder="Password (kompokkhe 6 okkhor)" autocomplete="${isLogin ? 'current-password' : 'new-password'}">
-      ${friendlyErr ? `<p class="err">${esc(friendlyErr)}</p>` : ''}
+      <input type="password" id="pw" placeholder="Password (min 6 chars)" autocomplete="${isLogin ? 'current-password' : 'new-password'}">
+      ${err ? `<p class="err">${esc(err)}</p>` : ''}
       ${okMsg ? `<p class="ok">${esc(okMsg)}</p>` : ''}
-      <button class="btn" id="go">${isLogin ? 'Login' : 'Account kholun'}</button>
-      ${isLogin ? '<button class="link" id="rst">Password bhule gechen? (Email-e reset link)</button>' : ''}
-      <button class="link" id="sw">${isLogin ? 'Notun? Account kholun' : 'Account ache? Login korun'}</button>
+      <button class="btn" id="go">${isLogin ? 'Login' : 'Create Account'}</button>
+      ${isLogin ? '<button class="link" id="rst">Forgot Password?</button>' : ''}
+      <button class="link" id="sw">${isLogin ? 'New here? Create Account' : 'Already have an account? Login'}</button>
     </div>`;
 
   document.getElementById('sw').onclick = () => authView(!isLogin, '', '', document.getElementById('em').value.trim());
-
   const rstBtn = document.getElementById('rst');
   if (rstBtn) {
     rstBtn.onclick = async () => {
       const email = document.getElementById('em').value.trim();
-      if (!email) return authView(true, 'Age upore apnar Email likhun, tarpor Reset chapun');
+      if (!email) return authView(true, 'Enter your email first');
       rstBtn.disabled = true;
       try {
         await auth.sendPasswordResetEmail(email);
-        authView(true, '', 'Password reset link apnar email-e pathano hoyeche (Spam folder-o dekhun).', email);
-      } catch (ex) {
-        authView(true, ex.message, '', email);
-      }
+        authView(true, '', 'Password reset link sent.', email);
+      } catch (ex) { authView(true, ex.message, '', email); }
     };
   }
-
-  document.getElementById('go').onclick = async (e) => {
-    const btn = e.target;
-    btn.disabled = true;
+  document.getElementById('go').onclick = async e => {
+    e.target.disabled = true;
     const email = document.getElementById('em').value.trim();
     const pw = document.getElementById('pw').value;
-    if (!email || !pw) {
-      authView(isLogin, 'Email ar Password dutoi likhun', '', email);
-      return;
-    }
+    if (!email || !pw) return authView(isLogin, 'Enter email and password', '', email);
     if (isLogin) {
-      try {
-        await auth.signInWithEmailAndPassword(email, pw);
-      } catch (ex) {
-        authView(true, ex.message, '', email);
-      }
+      try { await auth.signInWithEmailAndPassword(email, pw); }
+      catch (ex) { authView(true, ex.message, '', email); }
       return;
     }
     const name = document.getElementById('nm').value.trim();
-    if (!name) {
-      authView(false, 'Apnar naam likhun', '', email);
-      return;
-    }
+    if (!name) return authView(false, 'Enter your name', '', email);
     signingUp = true;
     try {
       const c = await auth.createUserWithEmailAndPassword(email, pw);
       me = c.user;
       await c.user.updateProfile({ displayName: name });
       await c.user.sendEmailVerification();
-      verifyView('Verify email pathano hoyeche.', true);
-    } catch (ex) {
-      authView(false, ex.message, '', email);
-    } finally {
-      signingUp = false;
-    }
+      verifyView('Verification email sent.', true);
+    } catch (ex) { authView(false, ex.message, '', email); }
+    finally { signingUp = false; }
   };
 }
 
-/* ---------- USERNAME SETUP ---------- */
 function usernameSetup(err = '') {
   stop();
   currentScreenName = 'username';
   $app.innerHTML = `
     <div class="auth">
-      <h1>Username thik korun</h1>
-      <p class="hint">Bondhura apnake ei username diye khujbe. ${UN_HELP}</p>
-      <input type="text" id="nm" placeholder="Apnar naam" value="${esc(me.displayName || '')}">
-      <input type="text" id="un" placeholder="Username ba phone number" autocapitalize="off" autocomplete="off">
+      <h1>Choose Username</h1>
+      <p class="hint">${UN_HELP}</p>
+      <input type="text" id="nm" placeholder="Your Name" value="${esc(me.displayName || '')}">
+      <input type="text" id="un" placeholder="username" autocapitalize="off" autocomplete="off">
       ${err ? `<p class="err">${esc(err)}</p>` : ''}
       <button class="btn" id="go">${esc(tr('saveBtn'))}</button>
       <button class="link" id="lo">${esc(tr('logout'))}</button>
     </div>`;
   document.getElementById('lo').onclick = () => auth.signOut();
-  document.getElementById('go').onclick = async (e) => {
+  document.getElementById('go').onclick = async e => {
     const name = document.getElementById('nm').value.trim();
     const username = normUn(document.getElementById('un').value);
-    if (!name) return usernameSetup('Apnar naam likhun');
+    if (!name) return usernameSetup('Enter your name');
     if (!UN_RE.test(username)) return usernameSetup(UN_HELP);
     e.target.disabled = true;
     try {
       await me.updateProfile({ displayName: name });
       await claimUsername(username, name);
-      ensureNotifPermission();
       startPresence();
       listenIncomingCalls();
       watchChatNotifications();
       appUnlocked = true;
       home('chats', false);
-    } catch (ex) {
-      usernameSetup('Ei username onno kew nise. Onno ekta username din.');
-    }
+    } catch (ex) { usernameSetup('Username already taken.'); }
   };
 }
 
-/* ---------- SETTINGS: PROFILE, LANGUAGE (3 OPTIONS), USERNAME, EMAIL, RINGTONE, BLOCK LIST, PRIVACY & PIN ---------- */
 function profileView() {
   stop();
   currentScreenName = 'profile';
@@ -1387,44 +1380,31 @@ function profileView() {
   $app.innerHTML = `
     <header><button id="bk">←</button>${esc(tr('settingsTitle'))}</header>
     <div class="pad">
-      <div class="pav" id="pav" title="Photo change korun">${avHtml(newPhoto, myName())}</div>
-      <p class="hint" style="text-align:center">Chobite chap diye Profile Photo bodlan</p>
+      <div class="pav" id="pav">${avHtml(newPhoto, myName())}</div>
       <input type="file" id="pfi" accept="image/jpeg,image/png,image/webp" hidden>
 
       <div class="card">
         <label class="hint"><b>${esc(tr('nameLabel'))}</b></label>
         <input type="text" id="pnm" value="${esc(myName())}" placeholder="${esc(tr('nameLabel'))}">
         <label class="hint"><b>${esc(tr('aboutLabel'))}</b></label>
-        <input type="text" id="pab" value="${esc(profile.about || '')}" placeholder="About...">
+        <input type="text" id="pab" value="${esc(profile.about || '')}" placeholder="${esc(tr('aboutLabel'))}">
         <label class="hint"><b>🌐 ${esc(tr('langLabel'))}</b></label>
         <select id="plang">
           <option value="banglish" ${curLang === 'banglish' ? 'selected' : ''}>${esc(tr('langBanglish'))}</option>
           <option value="bn" ${curLang === 'bn' ? 'selected' : ''}>${esc(tr('langBn'))}</option>
           <option value="en" ${curLang === 'en' ? 'selected' : ''}>${esc(tr('langEn'))}</option>
         </select>
-        <p class="hint" style="margin:0">Username: <b>@${esc(profile.username)}</b> • Email: <b>${esc(me.email || '')}</b></p>
+        <p class="hint" style="margin:0">@${esc(profile.username)} • ${esc(me.email || '')}</p>
       </div>
 
       <div class="card">
         <div class="hint"><b>${esc(tr('sndCard'))}</b></div>
-        <label class="togrow">
-          <span>${esc(tr('ringToggle'))}</span>
-          <input type="checkbox" id="psound" ${sndOn ? 'checked' : ''}>
-        </label>
-        <label class="togrow">
-          <span>🌙 Dark Mode</span>
-          <input type="checkbox" id="pdark" ${darkOn ? 'checked' : ''}>
-        </label>
-        <label class="togrow">
-          <span>Online & Last Seen dekhano</span>
-          <input type="checkbox" id="plseen" ${lsOn ? 'checked' : ''}>
-        </label>
-        <label class="togrow">
-          <span>Read Receipts (✓✓ Seen) pathano</span>
-          <input type="checkbox" id="preceipt" ${rrOn ? 'checked' : ''}>
-        </label>
-        <label class="hint" style="margin-top:8px"><b>App Lock PIN (khali rakhle off)</b></label>
-        <input type="password" id="ppin" value="${esc(localStorage.getItem('amar_chat_pin') || '')}" placeholder="4-6 digit PIN (this device only)" maxlength="6" inputmode="numeric">
+        <label class="togrow"><span>${esc(tr('ringToggle'))}</span><input type="checkbox" id="psound" ${sndOn ? 'checked' : ''}></label>
+        <label class="togrow"><span>${esc(tr('darkToggle'))}</span><input type="checkbox" id="pdark" ${darkOn ? 'checked' : ''}></label>
+        <label class="togrow"><span>${esc(tr('lseenToggle'))}</span><input type="checkbox" id="plseen" ${lsOn ? 'checked' : ''}></label>
+        <label class="togrow"><span>${esc(tr('receiptToggle'))}</span><input type="checkbox" id="preceipt" ${rrOn ? 'checked' : ''}></label>
+        <label class="hint" style="margin-top:8px"><b>${esc(tr('pinLabel'))}</b></label>
+        <input type="password" id="ppin" value="${esc(localStorage.getItem('amar_chat_pin') || '')}" placeholder="4-6 digit PIN" maxlength="6" inputmode="numeric">
       </div>
       <button class="btn" id="psv" style="margin-bottom:14px">${esc(tr('saveBtn'))}</button>
 
@@ -1460,9 +1440,7 @@ function profileView() {
     </div>`;
 
   document.getElementById('bk').onclick = () => home('chats', false);
-  document.getElementById('pdark').onchange = e => {
-    document.body.classList.toggle('dark', e.target.checked);
-  };
+  document.getElementById('pdark').onchange = e => document.body.classList.toggle('dark', e.target.checked);
   document.getElementById('plang').onchange = async e => {
     const nextLang = e.target.value;
     profile.lang = nextLang;
@@ -1475,10 +1453,10 @@ function profileView() {
   document.getElementById('pfi').onchange = async e => {
     const f = e.target.files[0]; if (!f) return;
     try {
-      const small = await shrink(f, 320);
+      const small = await shrink(f, 220, 0.45);
       newPhoto = small.dataUrl;
       document.getElementById('pav').innerHTML = avHtml(newPhoto, myName());
-    } catch (ex) { toast('Chobi select kora jayni'); }
+    } catch (ex) { toast('Photo error'); }
     e.target.value = '';
   };
 
@@ -1491,33 +1469,26 @@ function profileView() {
     const lastSeen = document.getElementById('plseen').checked;
     const readReceipts = document.getElementById('preceipt').checked;
     const pinCode = document.getElementById('ppin').value.trim();
-    if (!name) return toast('Naam khali rakha jabe na');
-    if (pinCode && !/^\d{4,6}$/.test(pinCode)) return toast('PIN 4 theke 6 digit-er hote hobe');
+    if (!name) return toast('Name required');
+    if (pinCode && !/^\d{4,6}$/.test(pinCode)) return toast('PIN must be 4-6 digits');
     e.target.disabled = true;
     try {
       await me.updateProfile({ displayName: name });
       const privacy = { lastSeen, readReceipts };
       const batch = db.batch();
-      batch.set(db.collection('users').doc(me.uid), { name, about, photo: newPhoto, lang, soundEnabled, privacy, pinCode: firebase.firestore.FieldValue.delete(), darkMode }, { merge: true });
+      batch.set(db.collection('users').doc(me.uid), { name, about, photo: newPhoto, lang, soundEnabled, privacy, darkMode }, { merge: true });
       batch.set(db.collection('usernames').doc(profile.username), { name }, { merge: true });
       await batch.commit();
-      profile.name = name;
-      profile.about = about;
-      profile.photo = newPhoto;
-      profile.lang = lang;
-      profile.soundEnabled = soundEnabled;
-      profile.privacy = privacy;
+      Object.assign(profile, { name, about, photo: newPhoto, lang, soundEnabled, privacy, pinCode, darkMode });
       if (pinCode) localStorage.setItem('amar_chat_pin', pinCode);
       else localStorage.removeItem('amar_chat_pin');
-      profile.pinCode = pinCode;
-      profile.darkMode = darkMode;
       localStorage.setItem('amar_chat_lang', lang);
       applyTheme();
       appUnlocked = true;
       toast(tr('saveBtn'));
       home('chats', false);
     } catch (ex) {
-      toast('Save kora jayni: ' + ex.message);
+      toast('Save error: ' + ex.message);
       e.target.disabled = false;
     }
   };
@@ -1526,68 +1497,48 @@ function profileView() {
     const nextUn = normUn(document.getElementById('newun').value);
     if (!UN_RE.test(nextUn)) return toast(UN_HELP);
     const oldUn = profile.username;
-    if (nextUn === oldUn) return toast('Eta already apnar username');
+    if (nextUn === oldUn) return;
     try {
       const snap = await db.collection('usernames').doc(nextUn).get();
-      if (snap.exists && snap.data().uid !== me.uid) {
-        return toast('Ei username onno kew nise');
-      }
+      if (snap.exists && snap.data().uid !== me.uid) return toast('Username taken');
       const batch = db.batch();
       batch.set(db.collection('usernames').doc(nextUn), { uid: me.uid, name: myName() });
       if (oldUn) batch.delete(db.collection('usernames').doc(oldUn));
       batch.set(db.collection('users').doc(me.uid), { username: nextUn }, { merge: true });
       await batch.commit();
       profile.username = nextUn;
-      toast(`Username updated: @${nextUn}`);
+      toast(`@${nextUn}`);
       profileView();
-    } catch (ex) {
-      toast('Username update kora jayni: ' + ex.message);
-    }
+    } catch (ex) { toast(ex.message); }
   };
 
   document.getElementById('embtn').onclick = async () => {
     const nextEm = document.getElementById('newem').value.trim();
     const curPw = document.getElementById('emcurpw').value;
-    if (!nextEm || !nextEm.includes('@')) return toast('Valid email likhun');
-    if (!curPw) return toast('Current password din');
+    if (!nextEm || !nextEm.includes('@') || !curPw) return toast('Enter email and current password');
     try {
       const cred = firebase.auth.EmailAuthProvider.credential(me.email, curPw);
       await me.reauthenticateWithCredential(cred);
       await me.verifyBeforeUpdateEmail(nextEm);
       document.getElementById('emcurpw').value = '';
-      toast('Notun email-e verification link pathano hoyeche');
-    } catch (ex) {
-      toast('Email update kora jayni: ' + ex.message);
-    }
+      toast('Verification link sent');
+    } catch (ex) { toast(ex.message); }
   };
 
   async function renderBlockList() {
     const box = document.getElementById('blklist');
     const ids = myBlocked();
-    if (!ids.length) {
-      box.innerHTML = `<div class="hint" style="margin:0">${esc(tr('noBlk'))}</div>`;
-      return;
-    }
-    const labels = {};
-    for (const uid of ids) {
-      try {
-        const d = await db.collection('users').doc(uid).get();
-        labels[uid] = d.exists ? `${d.data().name || 'User'}${d.data().username ? ' (@' + d.data().username + ')' : ''}` : uid;
-      } catch (e) { labels[uid] = uid; }
-    }
+    if (!ids.length) { box.innerHTML = `<div class="hint" style="margin:0">${esc(tr('noBlk'))}</div>`; return; }
     box.innerHTML = ids.map(uid => `
       <div class="mrow">
-        <span>${esc(labels[uid] || uid)}</span>
+        <span>${esc(userProfilesCache[uid]?.name || uid)}</span>
         <button class="btn sm sec unblkrow" data-u="${esc(uid)}" style="padding:5px 10px;font-size:12px">${esc(tr('unblkBtn'))}</button>
       </div>`).join('');
     box.querySelectorAll('.unblkrow').forEach(btn => {
       btn.onclick = async () => {
         const uid = btn.dataset.u;
-        await db.collection('users').doc(me.uid).set({
-          blocked: firebase.firestore.FieldValue.arrayRemove(uid)
-        }, { merge: true });
+        await db.collection('users').doc(me.uid).set({ blocked: firebase.firestore.FieldValue.arrayRemove(uid) }, { merge: true });
         profile.blocked = myBlocked().filter(x => x !== uid);
-        toast(tr('unblkBtn'));
         renderBlockList();
       };
     });
@@ -1596,14 +1547,12 @@ function profileView() {
 
   document.getElementById('pwbtn').onclick = async () => {
     const np = document.getElementById('newpw').value;
-    if (!np || np.length < 6) return toast('Kompokkhe 6 okkhor-er password din');
+    if (!np || np.length < 6) return toast('Min 6 characters');
     try {
       await me.updatePassword(np);
       document.getElementById('newpw').value = '';
-      toast('Password poriborton hoyeche');
-    } catch (ex) {
-      toast('Age logout kore abar login korun, tarpor password bodlan: ' + ex.message);
-    }
+      toast('Password updated');
+    } catch (ex) { toast(ex.message); }
   };
 
   document.getElementById('delacc').onclick = async () => {
@@ -1612,14 +1561,10 @@ function profileView() {
       await db.collection('users').doc(me.uid).delete().catch(() => {});
       await db.collection('usernames').doc(profile.username).delete().catch(() => {});
       await me.delete();
-      toast('Account delete hoyeche');
-    } catch (ex) {
-      toast('Account delete korte age logout-login korun: ' + ex.message);
-    }
+    } catch (ex) { toast(ex.message); }
   };
 }
 
-/* ---------- STARRED MESSAGES VIEW ---------- */
 function starredView() {
   stop();
   currentScreenName = 'starred';
@@ -1627,14 +1572,11 @@ function starredView() {
   applyTheme();
   const starred = myStarred();
   $app.innerHTML = `
-    <header><button id="bk">←</button>⭐ Starred Messages</header>
-    <div class="list" id="sls">
-      ${starred.length ? '' : '<div class="empty">Kono starred message nei.<br>Message-e tap kore ⭐ Star chapun.</div>'}
-    </div>`;
+    <header><button id="bk">←</button>${esc(tr('starredMenu'))}</header>
+    <div class="list" id="sls">${starred.length ? '' : '<div class="empty">No starred messages.</div>'}</div>`;
   document.getElementById('bk').onclick = () => home('chats', false);
   const sls = document.getElementById('sls');
   if (!starred.length) return;
-
   sls.innerHTML = starred.map(item => `
     <div class="row" style="cursor:default">
       <div class="mid">
@@ -1643,51 +1585,42 @@ function starredView() {
       </div>
       <button class="btn sm danger unstar" data-mid="${esc(item.id)}" style="padding:5px 10px;font-size:12px">Remove</button>
     </div>`).join('');
-
   sls.querySelectorAll('.unstar').forEach(btn => {
     btn.onclick = async () => {
       const mid = btn.dataset.mid;
       const target = myStarred().find(x => x.id === mid);
       if (!target) return;
-      await db.collection('users').doc(me.uid).set({
-        starred: firebase.firestore.FieldValue.arrayRemove(target)
-      }, { merge: true });
+      await db.collection('users').doc(me.uid).set({ starred: firebase.firestore.FieldValue.arrayRemove(target) }, { merge: true });
       profile.starred = myStarred().filter(x => x.id !== mid);
-      toast('Starred theke bad dewa hoyeche');
       starredView();
     };
   });
 }
 
-/* ---------- USERNAME DIYE KHOJA ---------- */
 async function lookup(raw) {
   const u = normUn(raw);
   if (!UN_RE.test(u)) throw new Error(UN_HELP);
   const d = await db.collection('usernames').doc(u).get();
-  if (!d.exists) throw new Error('Ei username e kew nei');
+  if (!d.exists) throw new Error('User not found');
   const x = d.data();
-  if (x.uid === me.uid) throw new Error('Eta apnar nijer username');
+  if (x.uid === me.uid) throw new Error('Cannot chat with yourself');
   return { uid: x.uid, name: x.name, username: u };
 }
 
-/* ---------- STATUS POST MODAL (PRIVACY: ALL / SELECTED + VIEWERS + STATUS REPLY) ---------- */
 async function openStatusModal() {
   const modal = document.createElement('div');
   modal.className = 'modal';
   modal.innerHTML = `
     <div class="mbox">
-      <div class="mhead"><span>🟢 Notun Status Post</span><button id="scl">✕</button></div>
+      <div class="mhead"><span>${esc(tr('postStatusMenu'))}</span><button id="scl">✕</button></div>
       <div class="mbody">
-        <input type="text" id="stinp" placeholder="Apnar status likhun (24h thakbe)...">
-        <label class="hint"><b>Status Privacy</b></label>
+        <input type="text" id="stinp" placeholder="Status (24h)...">
         <select id="stpriv">
-          <option value="all">Sobar sathe share (All)</option>
-          <option value="selected">Shudhu selected bondhuder sathe</option>
+          <option value="all">Share with All</option>
+          <option value="selected">Selected Friends Only</option>
         </select>
-        <div id="stpick" style="display:none;max-height:170px;overflow:auto;border:1px solid var(--bd);border-radius:8px;padding:8px;margin-bottom:12px">
-          <div class="hint">Loading bondhu...</div>
-        </div>
-        <button class="btn" id="stpost">Post Status</button>
+        <div id="stpick" style="display:none;max-height:170px;overflow:auto;border:1px solid var(--bd);border-radius:8px;padding:8px;margin-bottom:12px"></div>
+        <button class="btn" id="stpost">Post</button>
       </div>
     </div>`;
   document.body.appendChild(modal);
@@ -1704,59 +1637,35 @@ async function openStatusModal() {
     if (show && !contactsLoaded) {
       contactsLoaded = true;
       try {
-        const cSnap = await db.collection('chats').where('members', 'array-contains', me.uid).get();
+        const cSnap = await db.collection('chats').where('members', 'array-contains', me.uid).limit(20).get();
         const peers = {};
         cSnap.docs.forEach(d => {
           const cd = d.data();
-          (cd.members || []).forEach(uid => {
-            if (uid !== me.uid) peers[uid] = cd.memberNames?.[uid] || 'User';
-          });
+          (cd.members || []).forEach(uid => { if (uid !== me.uid) peers[uid] = cd.memberNames?.[uid] || 'User'; });
         });
         const entries = Object.entries(peers);
-        if (!entries.length) {
-          pickBox.innerHTML = '<div class="hint" style="margin:0">Kono bondhu pawa jayni</div>';
-        } else {
-          pickBox.innerHTML = entries.map(([uid, nm]) => `
-            <label class="togrow" style="padding:4px 0">
-              <span>${esc(nm)}</span>
-              <input type="checkbox" class="stchk" value="${esc(uid)}">
-            </label>`).join('');
-        }
-      } catch (e) {
-        pickBox.innerHTML = '<div class="err" style="margin:0">Load kora jayni</div>';
-      }
+        pickBox.innerHTML = entries.length
+          ? entries.map(([uid, nm]) => `<label class="togrow" style="padding:4px 0"><span>${esc(nm)}</span><input type="checkbox" class="stchk" value="${esc(uid)}"></label>`).join('')
+          : '<div class="hint" style="margin:0">No contacts</div>';
+      } catch (e) {}
     }
   };
 
   modal.querySelector('#stpost').onclick = async () => {
     const clean = modal.querySelector('#stinp').value.trim();
-    if (!clean) return toast('Status khali rakha jabe na');
+    if (!clean) return;
     const privacy = privSel.value;
-    const allowedUids = privacy === 'selected'
-      ? [...modal.querySelectorAll('.stchk:checked')].map(x => x.value)
-      : [];
-    if (privacy === 'selected' && !allowedUids.length) {
-      return toast('Kompokkhe 1 jon bondhu select korun');
-    }
+    const allowedUids = privacy === 'selected' ? [...modal.querySelectorAll('.stchk:checked')].map(x => x.value) : [];
+    if (privacy === 'selected' && !allowedUids.length) return toast('Select at least 1 friend');
     const now = Date.now();
     try {
       await db.collection('statuses').add({
-        uid: me.uid,
-        userName: myName(),
-        photo: profile.photo || '',
-        text: clean,
-        privacy,
-        allowedUids,
-        viewedBy: [],
-        createdAt: now,
-        expiresAt: now + 24 * 60 * 60 * 1000
+        uid: me.uid, userName: myName(), photo: '', text: clean,
+        privacy, allowedUids, viewedBy: [], createdAt: now, expiresAt: now + 24 * 60 * 60 * 1000
       });
       modal.remove();
-      toast('Status post hoyeche');
       home('status', false);
-    } catch (e) {
-      toast('Status post kora jayni: ' + e.message);
-    }
+    } catch (e) { toast(e.message); }
   };
 }
 
@@ -1767,29 +1676,20 @@ async function sendStatusReply(statusObj, replyText) {
   const cid = ids.join('_');
   const FV = firebase.firestore.FieldValue;
   await db.collection('chats').doc(cid).set({
-    isGroup: false,
-    members: ids,
+    isGroup: false, members: ids,
     memberNames: { [me.uid]: myName(), [statusObj.uid]: statusObj.userName || 'User' },
     lastMessage: `Status reply: ${clean}`,
     updatedAt: FV.serverTimestamp()
   }, { merge: true });
   await db.collection('chats').doc(cid).collection('messages').add({
-    senderId: me.uid,
-    senderName: myName(),
-    text: clean,
+    senderId: me.uid, senderName: myName(), text: clean,
     replyTo: { id: statusObj.id, senderName: statusObj.userName || 'Status', preview: `Status: ${statusObj.text}` },
-    reactions: {},
-    hiddenFor: [],
-    edited: false,
-    deleted: false,
-    deliveredTo: [me.uid],
-    seenBy: [me.uid],
-    createdAt: FV.serverTimestamp()
+    reactions: {}, hiddenFor: [], edited: false, deleted: false,
+    deliveredTo: [me.uid], seenBy: [me.uid], createdAt: FV.serverTimestamp()
   });
-  toast('Status reply pathano hoyeche');
+  toast('Reply sent');
 }
 
-/* ---------- CHAT LIST + DRAFT PREVIEW + STATUS + CALLS ---------- */
 function chatTitle(c) {
   if (c.isGroup) return c.name || 'Group';
   const oid = otherUid(c);
@@ -1810,8 +1710,6 @@ function home(activeTab = 'chats', showArchived = false) {
   ensureRootHistoryAnchor();
   applyTheme();
   let allChats = [];
-  let presMap = {};
-  let unreadMap = {};
   let statusDocs = [];
   let callLogs = [];
   let searchTerm = '';
@@ -1834,10 +1732,10 @@ function home(activeTab = 'chats', showArchived = false) {
     <div class="list" id="ls"><div class="empty">Loading...</div></div>
     <button class="fab" id="fab">+</button>
     <div class="menu" id="mn" style="display:none">
-      <div id="m1">👤 Notun chat</div>
-      <div id="m2">👥 Notun group</div>
-      <div id="m5">🟢 Status post korun</div>
-      <div id="m4">⭐ Starred Messages</div>
+      <div id="m1">${esc(tr('newChat'))}</div>
+      <div id="m2">${esc(tr('newGroup'))}</div>
+      <div id="m5">${esc(tr('postStatusMenu'))}</div>
+      <div id="m4">${esc(tr('starredMenu'))}</div>
       <div id="m3">${esc(tr('settingsTitle'))}</div>
     </div>`;
 
@@ -1868,7 +1766,7 @@ function home(activeTab = 'chats', showArchived = false) {
     if (!ls || !topslot) return;
 
     if (activeTab === 'status') {
-      topslot.innerHTML = `<div class="archbar" id="newstbar"><span>+ Notun Status Post Korun</span><span>24h</span></div>`;
+      topslot.innerHTML = `<div class="archbar" id="newstbar"><span>${esc(tr('newStatusBar'))}</span><span>24h</span></div>`;
       document.getElementById('newstbar').onclick = openStatusModal;
       const now = Date.now();
       const valid = statusDocs.filter(s => {
@@ -1877,20 +1775,13 @@ function home(activeTab = 'chats', showArchived = false) {
         if (s.privacy === 'selected') return Array.isArray(s.allowedUids) && s.allowedUids.includes(me.uid);
         return true;
       });
-      if (!valid.length) {
-        ls.innerHTML = '<div class="empty">Ekhon kono active status nei. Upore chap diye status din.</div>';
-        return;
-      }
+      if (!valid.length) { ls.innerHTML = `<div class="empty">${esc(tr('noStatus'))}</div>`; return; }
       ls.innerHTML = valid.map(s => {
         const viewers = Array.isArray(s.viewedBy) ? s.viewedBy : [];
-        const isMine = s.uid === me.uid;
         return `<div class="row strow" data-id="${s.id}">
           <div class="av ring">${avHtml(s.photo, s.userName)}</div>
-          <div class="mid">
-            <div class="t">${esc(s.userName || 'User')} ${s.privacy === 'selected' ? '<span style="font-size:11px;color:var(--g)">🔒 Selected</span>' : ''}</div>
-            <div class="s">${esc(s.text || '')}</div>
-          </div>
-          ${isMine ? `<span class="hint" style="margin:0">👁 ${viewers.length}</span>` : ''}
+          <div class="mid"><div class="t">${esc(s.userName || 'User')}</div><div class="s">${esc(s.text || '')}</div></div>
+          ${s.uid === me.uid ? `<span class="hint" style="margin:0">👁 ${viewers.length}</span>` : ''}
         </div>`;
       }).join('');
       ls.querySelectorAll('.strow').forEach(r => {
@@ -1902,16 +1793,14 @@ function home(activeTab = 'chats', showArchived = false) {
             const entry = { uid: me.uid, name: myName() };
             viewers.push(entry);
             try {
-              await db.collection('statuses').doc(st.id).update({
-                viewedBy: firebase.firestore.FieldValue.arrayUnion(entry)
-              });
+              await db.collection('statuses').doc(st.id).update({ viewedBy: firebase.firestore.FieldValue.arrayUnion(entry) });
               st.viewedBy = viewers;
             } catch (e) {}
           }
           const viewerHtml = st.uid === me.uid
-            ? `<div class="viewers"><b>👁 ${esc(tr('seenBy'))} (${viewers.length}):</b><br>${viewers.length ? viewers.map(v => esc(v.name || 'User')).join(', ') : 'Ekhono kew dekhenni'}</div>`
+            ? `<div class="viewers"><b>👁 ${esc(tr('seenBy'))} (${viewers.length}):</b><br>${viewers.length ? viewers.map(v => esc(v.name || 'User')).join(', ') : '-'}</div>`
             : `<div class="streply" onclick="event.stopPropagation()">
-                <input type="text" id="strinp" placeholder="${esc(st.userName || 'Status')}-ke reply likhun...">
+                <input type="text" id="strinp" placeholder="${esc(tr('replyBtn'))}...">
                 <button type="button" id="strbtn">➤</button>
               </div>`;
           openLightbox(st.text, `${st.userName} • Status`, true, viewerHtml);
@@ -1935,10 +1824,7 @@ function home(activeTab = 'chats', showArchived = false) {
 
     if (activeTab === 'calls') {
       topslot.innerHTML = '';
-      if (!callLogs.length) {
-        ls.innerHTML = '<div class="empty">Kono call history nei.</div>';
-        return;
-      }
+      if (!callLogs.length) { ls.innerHTML = `<div class="empty">${esc(tr('noCalls'))}</div>`; return; }
       ls.innerHTML = callLogs.map(c => {
         const dt = c.createdAt?.toDate?.();
         const tm = dt ? `${String(dt.getHours()).padStart(2, '0')}:${String(dt.getMinutes()).padStart(2, '0')}` : '';
@@ -1948,7 +1834,7 @@ function home(activeTab = 'chats', showArchived = false) {
         return `<div class="row callrow" data-uid="${esc(c.peerUid)}" data-name="${esc(c.peerName)}" data-vid="${c.isVideo ? '1' : '0'}">
           <div class="av">${esc((c.peerName || '?')[0]?.toUpperCase() || '?')}</div>
           <div class="mid">
-            <div class="t" style="color:${isMissed ? '#e53935' : 'inherit'}">${esc(c.peerName || 'User')} ${isMissed ? '• Missed' : ''}</div>
+            <div class="t" style="color:${isMissed ? '#e53935' : 'inherit'}">${esc(c.peerName || 'User')}</div>
             <div class="s" style="color:${isMissed ? '#e53935' : 'var(--sub)'}">${icon} ${mode} • ${esc(c.outcome || '')} ${tm ? '• ' + tm : ''}</div>
           </div>
           <span class="hint" style="margin:0">Call</span>
@@ -1960,30 +1846,22 @@ function home(activeTab = 'chats', showArchived = false) {
       return;
     }
 
-    topslot.innerHTML = `<div class="searchbox"><input type="text" id="srch" placeholder="🔍 Chat ba bondhu khujun..." value="${esc(searchTerm)}"></div><div id="archslot"></div>`;
+    topslot.innerHTML = `<div class="searchbox"><input type="text" id="srch" placeholder="${esc(tr('searchChats'))}" value="${esc(searchTerm)}"></div><div id="archslot"></div>`;
     const srchEl = document.getElementById('srch');
-    srchEl.addEventListener('input', e => {
-      searchTerm = e.target.value;
-      renderBody();
-    });
+    srchEl.addEventListener('input', e => { searchTerm = e.target.value; renderBody(); });
 
     const visibleChats = allChats.filter(c => {
       const delTs = tsMs(c.deletedAt?.[me.uid]);
       const updTs = tsMs(c.updatedAt);
-      if (delTs && updTs && updTs <= delTs) return false;
-      return true;
+      return !(delTs && updTs && updTs <= delTs);
     });
 
     const archivedCount = visibleChats.filter(c => !!c.archivedBy?.[me.uid]).length;
     const archslot = document.getElementById('archslot');
     if (archslot) {
-      if (showArchived) {
-        archslot.innerHTML = `<div class="archbar" id="archtog"><span>← Sob Chat-e fire jan</span><span>${archivedCount}</span></div>`;
-      } else if (archivedCount > 0) {
-        archslot.innerHTML = `<div class="archbar" id="archtog"><span>📦 Archived Chats</span><span>${archivedCount}</span></div>`;
-      } else {
-        archslot.innerHTML = '';
-      }
+      if (showArchived) archslot.innerHTML = `<div class="archbar" id="archtog"><span>${esc(tr('backAllChats'))}</span><span>${archivedCount}</span></div>`;
+      else if (archivedCount > 0) archslot.innerHTML = `<div class="archbar" id="archtog"><span>${esc(tr('archChats'))}</span><span>${archivedCount}</span></div>`;
+      else archslot.innerHTML = '';
       const tog = document.getElementById('archtog');
       if (tog) tog.onclick = () => home('chats', !showArchived);
     }
@@ -2001,38 +1879,22 @@ function home(activeTab = 'chats', showArchived = false) {
     });
 
     if (!filtered.length) {
-      ls.innerHTML = q
-        ? '<div class="empty">Kono chat khuje pawa jayni.</div>'
-        : showArchived
-          ? '<div class="empty">Kono archived chat nei.</div>'
-          : '<div class="empty">Kono chat nei.<br>Niche + chap diye bondhur username khuje shuru korun.</div>';
+      ls.innerHTML = q ? `<div class="empty">${esc(tr('noSearch'))}</div>` : showArchived ? `<div class="empty">${esc(tr('noArch'))}</div>` : `<div class="empty">${esc(tr('noChats'))}</div>`;
       return;
     }
 
     ls.innerHTML = filtered.map(c => {
       const t = chatTitle(c);
       const oid = otherUid(c);
-      const peerProf = oid ? userProfilesCache[oid] : null;
-      const canSeePeerStatus = peerProf?.privacy?.lastSeen !== false;
-      const isOn = canSeePeerStatus && isOnline(oid && presMap[oid]);
-      const photo = c.isGroup ? (c.groupIcon || '') : (peerProf?.photo || '');
+      const photo = c.isGroup ? (c.groupIcon || '') : (userProfilesCache[oid]?.photo || '');
       const isMuted = !!c.mutedBy?.[me.uid];
-      const uCount = unreadMap[c.id] || 0;
-      const typers = Object.entries(c.typing || {}).filter(([uid, val]) => uid !== me.uid && isTyping(val)).map(([uid]) => c.memberNames?.[uid] || 'Keu');
       const draftTxt = getDraft(c.id).trim();
-      const subHtml = typers.length
-        ? `✍️ ${esc(typers.join(', '))} likhche...`
-        : draftTxt
-          ? `<span class="draftlbl">Draft:</span> ${esc(draftTxt)}`
-          : esc(c.lastMessage || '');
+      const subHtml = draftTxt ? `<span class="draftlbl">Draft:</span> ${esc(draftTxt)}` : esc(c.lastMessage || '');
       return `<div class="row" data-id="${c.id}" data-t="${esc(t)}" data-oid="${oid || ''}">
-        <div class="av">${avHtml(photo, t, c.isGroup)}${isOn ? '<span class="dot"></span>' : ''}</div>
+        <div class="av">${avHtml(photo, t, c.isGroup)}</div>
         <div class="mid">
           <div class="t">${esc(t)} ${isMuted ? '<span title="Muted" style="font-size:12px">🔇</span>' : ''}</div>
           <div class="s">${subHtml}</div>
-        </div>
-        <div class="meta">
-          ${uCount > 0 ? `<span class="badge">${uCount > 99 ? '99+' : uCount}</span>` : ''}
         </div>
       </div>`;
     }).join('');
@@ -2042,89 +1904,27 @@ function home(activeTab = 'chats', showArchived = false) {
     });
   };
 
-  const presSubs = {};
-  const userSubs = {};
-  const unreadSubs = {};
-  addSub(() => {
-    Object.values(presSubs).forEach(f => { try { f(); } catch (e) {} });
-    Object.values(userSubs).forEach(f => { try { f(); } catch (e) {} });
-    Object.values(unreadSubs).forEach(f => { try { f(); } catch (e) {} });
-  });
-
   if (activeTab === 'status') {
-    // Fetch only statuses the signed-in user is allowed to see. This makes
-    // Selected Friends privacy enforceable by Firestore Rules, not just UI.
-    const statusSources = [new Map(), new Map(), new Map()];
-    const statusQueries = [
-      db.collection('statuses').where('uid', '==', me.uid),
-      db.collection('statuses').where('privacy', '==', 'all'),
-      db.collection('statuses').where('allowedUids', 'array-contains', me.uid)
-    ];
-    const refreshStatusDocs = () => {
-      const merged = new Map();
-      statusSources.forEach(source => source.forEach((value, key) => merged.set(key, value)));
-      statusDocs = [...merged.values()]
+    addSub(db.collection('statuses').where('privacy', '==', 'all').limit(25).onSnapshot(snap => {
+      statusDocs = snap.docs.map(d => ({ id: d.id, ...d.data() }))
         .filter(s => (s.expiresAt || 0) > Date.now())
-        .sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0))
-        .slice(0, 60);
+        .sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
       renderBody();
-    };
-    statusQueries.forEach((query, index) => {
-      addSub(query.onSnapshot(snap => {
-        const source = statusSources[index];
-        source.clear();
-        snap.docs.forEach(d => source.set(d.id, { id: d.id, ...d.data() }));
-        refreshStatusDocs();
-      }, err => {
-        console.error('Status load error:', err);
-        renderBody();
-      }));
-    });
+    }, () => renderBody()));
     return;
   }
 
   if (activeTab === 'calls') {
-    addSub(db.collection('users').doc(me.uid).collection('callLogs').orderBy('createdAt', 'desc').limit(30).onSnapshot(snap => {
+    addSub(db.collection('users').doc(me.uid).collection('callLogs').orderBy('createdAt', 'desc').limit(20).onSnapshot(snap => {
       callLogs = snap.docs.map(d => ({ id: d.id, ...d.data() }));
       renderBody();
     }, () => renderBody()));
     return;
   }
 
-  addSub(db.collection('chats').where('members', 'array-contains', me.uid).onSnapshot(snap => {
+  addSub(db.collection('chats').where('members', 'array-contains', me.uid).limit(25).onSnapshot(snap => {
     allChats = snap.docs.map(d => ({ id: d.id, ...d.data() }))
       .sort((a, b) => (b.updatedAt?.seconds || 9e12) - (a.updatedAt?.seconds || 9e12));
-    allChats.forEach(c => {
-      const oid = otherUid(c);
-      if (oid && !presSubs[oid]) {
-        presSubs[oid] = db.collection('presence').doc(oid).onSnapshot(d => {
-          presMap[oid] = d.exists ? d.data() : null;
-          renderBody();
-        }, () => {});
-      }
-      if (oid && !userSubs[oid]) {
-        userSubs[oid] = db.collection('users').doc(oid).onSnapshot(d => {
-          userProfilesCache[oid] = d.exists ? d.data() : null;
-          renderBody();
-        }, () => {});
-      }
-      if (!unreadSubs[c.id]) {
-        unreadSubs[c.id] = db.collection('chats').doc(c.id).collection('messages')
-          .orderBy('createdAt', 'desc').limit(50)
-          .onSnapshot(mSnap => {
-            const delTs = tsMs(c.deletedAt?.[me.uid]);
-            let cnt = 0;
-            mSnap.docs.forEach(md => {
-              const m = md.data();
-              if (m.senderId !== me.uid && !m.deleted && !(m.seenBy || []).includes(me.uid)) {
-                if (!delTs || tsMs(m.createdAt) > delTs) cnt++;
-              }
-            });
-            unreadMap[c.id] = cnt;
-            renderBody();
-          }, () => {});
-      }
-    });
     renderBody();
   }, err => {
     const l = document.getElementById('ls');
@@ -2132,18 +1932,16 @@ function home(activeTab = 'chats', showArchived = false) {
   }));
 }
 
-/* ---------- NOTUN CHAT ---------- */
 function newChat() {
   stop();
   currentScreenName = 'newchat';
   pushSubScreenHistory('newchat');
   $app.innerHTML = `
-    <header><button id="bk">←</button>Notun chat</header>
+    <header><button id="bk">←</button>${esc(tr('newChat'))}</header>
     <div class="pad">
-      <p class="hint">Bondhur username ba phone number likhe khujun.</p>
       <div class="addrow">
-        <input type="text" id="q" placeholder="username ba number" autocapitalize="off" autocomplete="off">
-        <button class="btn sm" id="fd">Khujun</button>
+        <input type="text" id="q" placeholder="username" autocapitalize="off" autocomplete="off">
+        <button class="btn sm" id="fd">🔍</button>
       </div>
       <p class="err" id="er" style="margin-top:10px"></p>
     </div>
@@ -2154,7 +1952,7 @@ function newChat() {
     er.textContent = ''; ls.innerHTML = '';
     try {
       const u = await lookup(document.getElementById('q').value);
-      ls.innerHTML = `<div class="row" id="rr"><div class="av">${esc(u.name[0]?.toUpperCase() || '?')}</div><div><div class="t">${esc(u.name)}</div><div class="s">@${esc(u.username)}. Chat shuru korte chapun</div></div></div>`;
+      ls.innerHTML = `<div class="row" id="rr"><div class="av">${esc(u.name[0]?.toUpperCase() || '?')}</div><div><div class="t">${esc(u.name)}</div><div class="s">@${esc(u.username)}</div></div></div>`;
       document.getElementById('rr').onclick = () => openOneToOne(u);
     } catch (ex) { er.textContent = ex.message; }
   };
@@ -2173,7 +1971,6 @@ async function openOneToOne(u) {
   chatView(id, u.name, u.uid);
 }
 
-/* ---------- NOTUN GROUP (WITH GROUP PHOTO / groupIcon) ---------- */
 function newGroup() {
   stop();
   currentScreenName = 'newgroup';
@@ -2182,21 +1979,19 @@ function newGroup() {
   let groupIcon = '';
 
   $app.innerHTML = `
-    <header><button id="bk">←</button>Notun group</header>
+    <header><button id="bk">←</button>${esc(tr('newGroup'))}</header>
     <div class="pad">
-      <div class="pav" id="gpav" title="Group photo set korun">${avHtml('', 'G', true)}</div>
-      <p class="hint" style="text-align:center">Group chobi dite upore chapun (optional)</p>
+      <div class="pav" id="gpav">${avHtml('', 'G', true)}</div>
       <input type="file" id="gfi" accept="image/jpeg,image/png,image/webp" hidden>
-      <input type="text" id="gn" placeholder="Group er naam">
-      <input type="text" id="gd" placeholder="Group description (optional)">
-      <p class="hint">Sodosso add korun: username ba number likhe Add chapun. Kompokkhe 2 jon lagbe.</p>
+      <input type="text" id="gn" placeholder="Group Name">
+      <input type="text" id="gd" placeholder="Description (optional)">
       <div class="addrow">
-        <input type="text" id="q" placeholder="username ba number" autocapitalize="off" autocomplete="off">
-        <button class="btn sm" id="ad">Add</button>
+        <input type="text" id="q" placeholder="username" autocapitalize="off" autocomplete="off">
+        <button class="btn sm" id="ad">+</button>
       </div>
       <p class="err" id="er" style="margin-top:10px"></p>
       <div class="chips" id="ch"></div>
-      <button class="btn" id="mk">Group toiri korun</button>
+      <button class="btn" id="mk">${esc(tr('newGroup'))}</button>
     </div>`;
 
   document.getElementById('bk').onclick = () => home('chats', false);
@@ -2204,10 +1999,10 @@ function newGroup() {
   document.getElementById('gfi').onchange = async e => {
     const f = e.target.files[0]; if (!f) return;
     try {
-      const small = await shrink(f, 320);
+      const small = await shrink(f, 200, 0.4);
       groupIcon = small.dataUrl;
       document.getElementById('gpav').innerHTML = avHtml(groupIcon, 'G', true);
-    } catch (ex) { toast('Group photo load kora jayni'); }
+    } catch (ex) {}
     e.target.value = '';
   };
 
@@ -2230,151 +2025,46 @@ function newGroup() {
   document.getElementById('mk').onclick = async () => {
     const name = document.getElementById('gn').value.trim();
     const description = document.getElementById('gd').value.trim();
-    if (!name) return toast('Group er naam likhun');
-    if (Object.keys(added).length < 2) return toast('Kompokkhe 2 jon sodosso add korun');
+    if (!name || Object.keys(added).length < 2) return toast('Enter group name and add at least 2 members');
     const memberNames = { [me.uid]: myName() };
     const memberUsernames = { [me.uid]: profile.username };
     Object.entries(added).forEach(([uid, u]) => { memberNames[uid] = u.name; memberUsernames[uid] = u.username; });
     const ref = await db.collection('chats').add({
-      isGroup: true,
-      name,
-      description,
-      groupIcon,
-      admins: [me.uid],
-      members: Object.keys(memberNames),
-      memberNames,
-      memberUsernames,
-      lastMessage: '',
-      updatedAt: firebase.firestore.FieldValue.serverTimestamp()
+      isGroup: true, name, description, groupIcon, admins: [me.uid],
+      members: Object.keys(memberNames), memberNames, memberUsernames,
+      lastMessage: '', updatedAt: firebase.firestore.FieldValue.serverTimestamp()
     });
     chatView(ref.id, name, null);
   };
 }
 
-/* ---------- GROUP ADMIN, PHOTO (groupIcon) & DESCRIPTION ---------- */
 function groupInfoView(chatId) {
   stop();
   currentScreenName = 'groupinfo';
   pushSubScreenHistory('groupinfo');
-  $app.innerHTML = `
-    <header><button id="bk">←</button>Group Info</header>
-    <div class="pad" id="gbody"><div class="empty">Loading...</div></div>`;
+  $app.innerHTML = `<header><button id="bk">←</button>Group Info</header><div class="pad" id="gbody"><div class="empty">Loading...</div></div>`;
   document.getElementById('bk').onclick = () => chatView(chatId, 'Group', null);
 
   addSub(db.collection('chats').doc(chatId).onSnapshot(snap => {
     if (!snap.exists) { home('chats', false); return; }
     const latestData = snap.data();
     const members = latestData.members || [];
-    if (!members.includes(me.uid)) { toast('Apni ei group-e nei'); home('chats', false); return; }
+    if (!members.includes(me.uid)) { home('chats', false); return; }
     const admins = latestData.admins || [members[0]];
     const isAdmin = admins.includes(me.uid);
-    let nextGroupIcon = latestData.groupIcon || '';
     const gbody = document.getElementById('gbody');
     if (!gbody) return;
-
     gbody.innerHTML = `
       <div class="card">
-        <div class="pav" id="egpav" title="Group photo">${avHtml(nextGroupIcon, latestData.name || 'G', true)}</div>
-        ${isAdmin ? `<input type="file" id="egfi" accept="image/jpeg,image/png,image/webp" hidden>` : ''}
-        <label class="hint"><b>Group er Naam & Description</b></label>
-        ${isAdmin ? `
-          <input type="text" id="gname" value="${esc(latestData.name || '')}" placeholder="Group naam">
-          <input type="text" id="gdesc" value="${esc(latestData.description || '')}" placeholder="Group description">
-          <button class="btn sm" id="gsave">Save Info</button>
-        ` : `
-          <div style="font-size:16px;font-weight:600">${esc(latestData.name || 'Group')}</div>
-          ${latestData.description ? `<p class="hint" style="margin-top:4px">${esc(latestData.description)}</p>` : ''}
-        `}
+        <div style="font-size:16px;font-weight:600">${esc(latestData.name || 'Group')}</div>
+        ${latestData.description ? `<p class="hint" style="margin-top:4px">${esc(latestData.description)}</p>` : ''}
       </div>
-      ${isAdmin ? `
       <div class="card">
-        <label class="hint"><b>Notun Sodosso Add Korun</b></label>
-        <div class="addrow">
-          <input type="text" id="gq" placeholder="username ba number" autocapitalize="off" autocomplete="off">
-          <button class="btn sm" id="gadd">Add</button>
-        </div>
-        <p class="err" id="ger" style="margin:6px 0 0"></p>
-      </div>` : ''}
-      <div class="card">
-        <label class="hint"><b>Sodosso (${members.length} jon)</b></label>
-        ${members.map(uid => {
-          const nm = latestData.memberNames?.[uid] || 'User';
-          const un = latestData.memberUsernames?.[uid] || '';
-          const adm = admins.includes(uid);
-          return `<div class="mrow">
-            <div style="min-width:0"><b>${esc(nm)}</b> ${un ? `<span class="hint">@${esc(un)}</span>` : ''} ${adm ? '<span style="color:var(--g);font-size:12px;font-weight:700">[Admin]</span>' : ''}</div>
-            <div style="display:flex;gap:6px;flex:none">
-              ${isAdmin && uid !== me.uid ? `<button class="btn sm sec gtogadm" data-u="${uid}" style="padding:5px 8px;font-size:11.5px">${adm ? 'Demote' : 'Make Admin'}</button>` : ''}
-              ${isAdmin && uid !== me.uid ? `<button class="btn sm danger grm" data-u="${uid}" style="padding:5px 8px;font-size:11.5px">Remove</button>` : ''}
-            </div>
-          </div>`;
-        }).join('')}
+        ${members.map(uid => `<div class="mrow"><span>${esc(latestData.memberNames?.[uid] || 'User')} ${admins.includes(uid) ? '<b style="color:var(--g);font-size:12px">[Admin]</b>' : ''}</span></div>`).join('')}
       </div>
-      <button class="btn danger" id="gleave">Group chhere din</button>`;
-
+      <button class="btn danger" id="gleave">Leave Group</button>`;
     document.getElementById('bk').onclick = () => chatView(chatId, latestData.name || 'Group', null);
-
-    if (isAdmin) {
-      document.getElementById('egpav').onclick = () => document.getElementById('egfi').click();
-      document.getElementById('egfi').onchange = async e => {
-        const f = e.target.files[0]; if (!f) return;
-        try {
-          const small = await shrink(f, 320);
-          nextGroupIcon = small.dataUrl;
-          document.getElementById('egpav').innerHTML = avHtml(nextGroupIcon, latestData.name || 'G', true);
-        } catch (ex) { toast('Group photo load kora jayni'); }
-        e.target.value = '';
-      };
-      document.getElementById('gsave').onclick = async () => {
-        const nm = document.getElementById('gname').value.trim();
-        const desc = document.getElementById('gdesc').value.trim();
-        if (!nm) return toast('Group er naam likhun');
-        await db.collection('chats').doc(chatId).update({ name: nm, description: desc, groupIcon: nextGroupIcon });
-        toast('Group info update hoyeche');
-      };
-      document.getElementById('gadd').onclick = async () => {
-        const er = document.getElementById('ger');
-        const q = document.getElementById('gq');
-        er.textContent = '';
-        try {
-          const u = await lookup(q.value);
-          if (members.includes(u.uid)) throw new Error('Ini agei group-e achen');
-          await db.collection('chats').doc(chatId).update({
-            members: firebase.firestore.FieldValue.arrayUnion(u.uid),
-            [`memberNames.${u.uid}`]: u.name,
-            [`memberUsernames.${u.uid}`]: u.username
-          });
-          q.value = '';
-          toast(`${u.name}-ke add kora hoyeche`);
-        } catch (ex) { er.textContent = ex.message; }
-      };
-      gbody.querySelectorAll('.gtogadm').forEach(btn => {
-        btn.onclick = async () => {
-          const uid = btn.dataset.u;
-          const isNowAdm = admins.includes(uid);
-          await db.collection('chats').doc(chatId).update({
-            admins: isNowAdm
-              ? firebase.firestore.FieldValue.arrayRemove(uid)
-              : firebase.firestore.FieldValue.arrayUnion(uid)
-          });
-          toast(isNowAdm ? 'Admin bad dewa hoyeche' : 'Admin banano hoyeche');
-        };
-      });
-      gbody.querySelectorAll('.grm').forEach(btn => {
-        btn.onclick = async () => {
-          const uid = btn.dataset.u;
-          if (!confirm('Ei sodosso-ke group theke remove korben?')) return;
-          await db.collection('chats').doc(chatId).update({
-            members: firebase.firestore.FieldValue.arrayRemove(uid),
-            admins: firebase.firestore.FieldValue.arrayRemove(uid)
-          });
-          toast('Remove kora hoyeche');
-        };
-      });
-    }
-
     document.getElementById('gleave').onclick = async () => {
-      if (!confirm('Apni ki group chhere dite chan?')) return;
       await db.collection('chats').doc(chatId).update({
         members: firebase.firestore.FieldValue.arrayRemove(me.uid),
         admins: firebase.firestore.FieldValue.arrayRemove(me.uid)
@@ -2384,69 +2074,43 @@ function groupInfoView(chatId) {
   }));
 }
 
-/* ---------- CHAT WALLPAPER MODAL ---------- */
 function openWallpaperModal(chatId, chatRef, currentWp) {
   let selColor = currentWp?.color || '';
-  let selImage = currentWp?.image || '';
-
   const modal = document.createElement('div');
   modal.className = 'modal';
   modal.innerHTML = `
     <div class="mbox">
-      <div class="mhead"><span>🖼 Chat Wallpaper</span><button id="wcl">✕</button></div>
+      <div class="mhead"><span>🖼 Wallpaper</span><button id="wcl">✕</button></div>
       <div class="mbody">
-        <div class="hint"><b>Color Wallpaper</b></div>
         <div class="swatches">
           ${WALLPAPER_COLORS.map(c => `<div class="swatch ${selColor === c ? 'on' : ''}" data-c="${c}" style="background:${c}"></div>`).join('')}
         </div>
-        <div class="hint"><b>Ba Nijer Chobi Wallpaper</b></div>
-        <input type="file" id="wpfile" accept="image/jpeg,image/png,image/webp">
         <div style="display:flex;gap:8px;margin-top:8px">
           <button class="btn sm sec" id="wpclr">Reset</button>
-          <button class="btn sm" id="wpsv" style="flex:1">Save Wallpaper</button>
+          <button class="btn sm" id="wpsv" style="flex:1">${esc(tr('saveBtn'))}</button>
         </div>
       </div>
     </div>`;
   document.body.appendChild(modal);
   modal.querySelector('#wcl').onclick = () => modal.remove();
   modal.onclick = e => { if (e.target === modal) modal.remove(); };
-
   modal.querySelectorAll('.swatch').forEach(sw => {
     sw.onclick = () => {
       modal.querySelectorAll('.swatch').forEach(x => x.classList.remove('on'));
       sw.classList.add('on');
       selColor = sw.dataset.c;
-      selImage = '';
     };
   });
-
-  modal.querySelector('#wpfile').onchange = async e => {
-    const f = e.target.files[0]; if (!f) return;
-    try {
-      const small = await shrink(f, 720);
-      selImage = small.dataUrl;
-      selColor = '';
-      modal.querySelectorAll('.swatch').forEach(x => x.classList.remove('on'));
-      toast('Chobi select hoyeche, Save chapun');
-    } catch (ex) { toast('Chobi load kora jayni'); }
-  };
-
   modal.querySelector('#wpclr').onclick = async () => {
     await chatRef.set({ wallpaperBy: { [me.uid]: null } }, { merge: true });
     modal.remove();
-    toast('Default wallpaper set hoyeche');
   };
-
   modal.querySelector('#wpsv').onclick = async () => {
-    await chatRef.set({
-      wallpaperBy: { [me.uid]: { color: selColor || null, image: selImage || null } }
-    }, { merge: true });
+    await chatRef.set({ wallpaperBy: { [me.uid]: { color: selColor || null } } }, { merge: true });
     modal.remove();
-    toast('Wallpaper save hoyeche');
   };
 }
 
-/* ---------- CAMERA PHOTO CAPTURE MODAL ---------- */
 async function openCameraModal(onCaptured) {
   let stream = null;
   let facing = 'user';
@@ -2458,16 +2122,13 @@ async function openCameraModal(onCaptured) {
       <div class="mbody">
         <div class="cambox"><video id="camvid" autoplay playsinline muted></video></div>
         <div style="display:flex;gap:8px;margin-top:12px">
-          <button class="btn sm sec" id="camflip">🔄 Flip</button>
-          <button class="btn" id="camsnap" style="flex:1">📷 Chobi Tulun</button>
+          <button class="btn sm sec" id="camflip">🔄</button>
+          <button class="btn" id="camsnap" style="flex:1">📷 Capture</button>
         </div>
       </div>
     </div>`;
   document.body.appendChild(modal);
-
-  const stopCam = () => {
-    if (stream) { stream.getTracks().forEach(t => t.stop()); stream = null; }
-  };
+  const stopCam = () => { if (stream) { stream.getTracks().forEach(t => t.stop()); stream = null; } };
   const closeCam = () => { stopCam(); modal.remove(); };
   modal.querySelector('#camcl').onclick = closeCam;
   modal.onclick = e => { if (e.target === modal) closeCam(); };
@@ -2475,69 +2136,45 @@ async function openCameraModal(onCaptured) {
   const startCam = async () => {
     stopCam();
     try {
-      stream = await navigator.mediaDevices.getUserMedia({
-        video: { facingMode: { ideal: facing }, width: { ideal: 720 }, height: { ideal: 540 } },
-        audio: false
-      });
+      stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: { ideal: facing }, width: { ideal: 320 }, height: { ideal: 240 } }, audio: false });
       const v = modal.querySelector('#camvid');
       v.srcObject = stream;
       v.play().catch(() => {});
-    } catch (e) {
-      toast('Camera chalu kora jayni: ' + (e.message || 'Permission din'));
-      closeCam();
-    }
+    } catch (e) { toast('Camera error'); closeCam(); }
   };
-
-  modal.querySelector('#camflip').onclick = () => {
-    facing = facing === 'user' ? 'environment' : 'user';
-    startCam();
-  };
-
+  modal.querySelector('#camflip').onclick = () => { facing = facing === 'user' ? 'environment' : 'user'; startCam(); };
   modal.querySelector('#camsnap').onclick = async () => {
     const v = modal.querySelector('#camvid');
-    if (!v || !v.videoWidth) return toast('Camera ready hoyni');
+    if (!v || !v.videoWidth) return;
     const c = document.createElement('canvas');
-    c.width = v.videoWidth;
-    c.height = v.videoHeight;
-    c.getContext('2d').drawImage(v, 0, 0);
-    const dataUrl = c.toDataURL('image/jpeg', 0.65);
-    const cap = prompt('Photo caption (optional):', '');
-    if (cap === null) return;
+    const s = Math.min(1, 300 / Math.max(v.videoWidth, v.videoHeight));
+    c.width = Math.round(v.videoWidth * s);
+    c.height = Math.round(v.videoHeight * s);
+    c.getContext('2d').drawImage(v, 0, 0, c.width, c.height);
+    const dataUrl = c.toDataURL('image/jpeg', 0.4);
     closeCam();
-    await onCaptured(dataUrl, cap.trim() || null);
+    await onCaptured(dataUrl);
   };
-
   await startCam();
 }
 
-/* ---------- FORWARD MODAL (SINGLE OR BULK) ---------- */
 async function openForwardModal(msgList) {
   const items = Array.isArray(msgList) ? msgList : [msgList];
   if (!items.length) return;
   const modal = document.createElement('div');
   modal.className = 'modal';
-  modal.innerHTML = `
-    <div class="mbox">
-      <div class="mhead"><span>↪ Forward (${items.length})</span><button id="mcl">✕</button></div>
-      <div class="list" id="fls"><div class="empty">Loading chats...</div></div>
-    </div>`;
+  modal.innerHTML = `<div class="mbox"><div class="mhead"><span>↪ ${esc(tr('forwardBtn'))} (${items.length})</span><button id="mcl">✕</button></div><div class="list" id="fls"><div class="empty">Loading...</div></div></div>`;
   document.body.appendChild(modal);
   modal.querySelector('#mcl').onclick = () => modal.remove();
   modal.onclick = e => { if (e.target === modal) modal.remove(); };
-
   try {
-    const snap = await db.collection('chats').where('members', 'array-contains', me.uid).get();
-    const chats = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+    const snap = await db.collection('chats').where('members', 'array-contains', me.uid).limit(20).get();
     const fls = modal.querySelector('#fls');
-    if (!chats.length) { fls.innerHTML = '<div class="empty">Kono chat nei</div>'; return; }
-    fls.innerHTML = chats.map(c => {
+    fls.innerHTML = snap.docs.map(d => {
+      const c = { id: d.id, ...d.data() };
       const t = chatTitle(c);
-      return `<div class="row" data-id="${c.id}" data-t="${esc(t)}" data-oid="${otherUid(c) || ''}">
-        <div class="av">${avHtml(c.groupIcon || '', t, c.isGroup)}</div>
-        <div class="mid"><div class="t">${esc(t)}</div></div>
-      </div>`;
+      return `<div class="row" data-id="${c.id}" data-t="${esc(t)}" data-oid="${otherUid(c) || ''}"><div class="av">${avHtml('', t, c.isGroup)}</div><div class="mid"><div class="t">${esc(t)}</div></div></div>`;
     }).join('');
-
     fls.querySelectorAll('.row').forEach(r => {
       r.onclick = async () => {
         const targetId = r.dataset.id;
@@ -2546,67 +2183,48 @@ async function openForwardModal(msgList) {
         for (const msgObj of items) {
           if (msgObj.deleted) continue;
           await db.collection('chats').doc(targetId).collection('messages').add({
-            senderId: me.uid,
-            senderName: myName(),
-            text: msgObj.text || null,
-            image: msgObj.image || null,
-            audio: msgObj.audio || null,
-            audioMime: msgObj.audioMime || null,
-            docUrl: msgObj.docUrl || null,
-            docName: msgObj.docName || null,
-            forwarded: true,
-            edited: false,
-            deleted: false,
-            deliveredTo: [me.uid],
-            seenBy: [me.uid],
-            createdAt: FV.serverTimestamp()
+            senderId: me.uid, senderName: myName(),
+            text: msgObj.text || null, image: msgObj.image || null,
+            audio: msgObj.audio || null, audioMime: msgObj.audioMime || null,
+            forwarded: true, edited: false, deleted: false,
+            deliveredTo: [me.uid], seenBy: [me.uid], createdAt: FV.serverTimestamp()
           });
-          lastPreview = msgObj.docName ? `📄 ${msgObj.docName}` : msgObj.audio ? '🎤 Voice message' : msgObj.image ? '📷 Photo' : (msgObj.text || 'Message');
+          lastPreview = msgObj.audio ? '🎤 Voice message' : msgObj.image ? '📷 Photo' : (msgObj.text || 'Message');
         }
-        if (lastPreview) {
-          await db.collection('chats').doc(targetId).set({
-            lastMessage: '↪ ' + lastPreview,
-            updatedAt: FV.serverTimestamp()
-          }, { merge: true });
-        }
+        if (lastPreview) await db.collection('chats').doc(targetId).set({ lastMessage: '↪ ' + lastPreview, updatedAt: FV.serverTimestamp() }, { merge: true });
         modal.remove();
-        toast('Message forward hoyeche');
         chatView(targetId, r.dataset.t, r.dataset.oid || null);
       };
     });
-  } catch (e) {
-    modal.remove();
-    toast('Forward kora jayni: ' + e.message);
-  }
+  } catch (e) { modal.remove(); }
 }
 
-/* ---------- MEDIA & DOC UPLOAD ---------- */
-async function uploadMedia(chatId, blobOrFile, ext, fallbackDataUrl, isDoc = false) {
-  if (!USE_STORAGE) {
-    if (fallbackDataUrl && fallbackDataUrl.length <= 700000) return fallbackDataUrl;
-    throw new Error('File size beshi boro (ba USE_STORAGE = true kore Storage rules din).');
-  }
-  try {
-    const folder = isDoc ? 'docs' : 'media';
-    const path = `chats/${chatId}/${folder}/${me.uid}_${Date.now()}.${ext}`;
-    const ref = storage.ref().child(path);
-    const contentType = blobOrFile.type || (ext === 'jpg' ? 'image/jpeg' : 'application/octet-stream');
-    const snap = await ref.put(blobOrFile, { contentType });
-    return await snap.ref.getDownloadURL();
-  } catch (e) {
-    if (fallbackDataUrl && fallbackDataUrl.length <= 700000) return fallbackDataUrl;
-    throw new Error('File upload kora jayni (Storage rules ba size check korun).');
-  }
+function blobToDataURL(blob) {
+  return new Promise((res, rej) => {
+    const fr = new FileReader();
+    fr.onload = () => res(fr.result);
+    fr.onerror = () => rej(new Error('File read failed'));
+    fr.readAsDataURL(blob);
+  });
 }
 
-/* ---------- CHAT SCREEN (DRAFT + SEARCH JUMP HIGHLIGHT + LINK PREVIEW + GROUP SEEN BY) ---------- */
+/* ---------- FREE-PLAN MEDIA HELPER (NO STORAGE BUCKET NEEDED) ---------- */
+async function prepareFreeMedia(blobOrDataUrl, kind) {
+  const dataUrl = typeof blobOrDataUrl === 'string' ? blobOrDataUrl : await blobToDataURL(blobOrDataUrl);
+  if (!dataUrl || dataUrl.length > MAX_FREE_MEDIA_CHARS) {
+    throw new Error(kind === 'voice'
+      ? `Voice clip beshi boro (max ${MAX_FREE_VOICE_SEC}s rakhun).`
+      : 'Chobi beshi boro. Chhoto chobi din.');
+  }
+  return dataUrl;
+}
+
 function chatView(chatId, title, peerUid = null) {
   stop();
   currentScreenName = 'chat';
   pushSubScreenHistory('chat:' + chatId);
   applyTheme();
   currentOpenChatId = chatId;
-  ensureNotifPermission();
 
   let chatMeta = {};
   let peerUser = peerUid ? (userProfilesCache[peerUid] || null) : null;
@@ -2622,13 +2240,13 @@ function chatView(chatId, title, peerUid = null) {
         <span id="htitle">${esc(title)}</span>
         <span class="hsub" id="hsub"></span>
       </div>
-      <button id="csbtn" title="Message Khujun">🔍</button>
+      <button id="csbtn" title="Search">🔍</button>
       ${peerUid ? '<button id="acall" title="Audio Call">📞</button><button id="vcall" title="Video Call">📹</button>' : ''}
       <button id="cmore" title="Menu">⋮</button>
       <div class="menu top" id="cmenu" style="display:none"></div>
     </header>
     <div class="searchbox" id="csbox" style="display:none">
-      <input type="text" id="csinp" placeholder="🔍 Ei chat-e message khujun...">
+      <input type="text" id="csinp" placeholder="${esc(tr('searchChats'))}">
       <button class="btn sm" id="cscls" style="padding:7px 11px">✕</button>
     </div>
     <div id="csresults"></div>
@@ -2636,13 +2254,13 @@ function chatView(chatId, title, peerUid = null) {
     <div class="msgs" id="ms"></div>
     <div class="replybar" id="rbar">
       <div class="rtxt" id="rtxt"></div>
-      <button id="rcl" title="Cancel Reply">✕</button>
+      <button id="rcl">✕</button>
     </div>
     <div class="recbar" id="recbar">
-      <span>🔴 Recording... <span id="rectm">00:00</span></span>
+      <span>🔴 <span id="rectm">00:00</span></span>
       <span class="sp" style="flex:1"></span>
-      <button class="cncl" id="reccncl">✕ Cancel</button>
-      <button class="stop" id="recstop">⏹ Pathan</button>
+      <button class="cncl" id="reccncl">${esc(tr('cancelBtn'))}</button>
+      <button class="stop" id="recstop">${esc(tr('sendBtn'))}</button>
     </div>
     <div class="emojipanel" id="ep"></div>
     <div id="inputslot">
@@ -2650,11 +2268,9 @@ function chatView(chatId, title, peerUid = null) {
         <button class="ph" id="ebtn" title="Emoji">😊</button>
         <button class="ph" id="ph" title="Photo">📷</button>
         <button class="ph" id="cambtn" title="Camera">📸</button>
-        <button class="ph" id="docbtn" title="Document">📎</button>
         <button class="ph" id="mic" title="Voice">🎤</button>
-        <input type="file" id="fi" accept="image/jpeg,image/png,image/webp,image/gif" hidden>
-        <input type="file" id="dfi" accept=".pdf,.doc,.docx,.xls,.xlsx,.txt,.zip,.csv" hidden>
-        <textarea id="tx" rows="1" placeholder="Message likhun..."></textarea>
+        <input type="file" id="fi" accept="image/*" hidden>
+        <textarea id="tx" rows="1" placeholder="${esc(tr('msgPlaceholder'))}"></textarea>
         <button id="sd" title="Send">➤</button>
       </div>
     </div>`;
@@ -2675,16 +2291,12 @@ function chatView(chatId, title, peerUid = null) {
 
   let msgCache = {};
   let lastDocs = [];
-  let typingTimeout = null, isTypingNow = false, lastTypingWrite = 0;
-  let peerPres = null, typingNames = [], typingClear = null;
+  let peerPres = null;
 
-  let rec = null, recStream = null, recChunks = [], recTimer = null, secCounter = 0, discardRec = false;
+  let rec = null, recStream = null, recChunks = [], recTimer = null, secCounter = 0, discardRec = false, activeAudioMime = 'audio/webm';
   const fmtSec = s => `${String(Math.floor(s / 60)).padStart(2, '0')}:${String(s % 60).padStart(2, '0')}`;
   const cleanupRec = () => {
-    clearInterval(recTimer);
-    recTimer = null;
-    secCounter = 0;
-    rectm.textContent = '00:00';
+    clearInterval(recTimer); recTimer = null; secCounter = 0; rectm.textContent = '00:00';
     recbar.classList.remove('on');
     if (recStream) { recStream.getTracks().forEach(t => t.stop()); recStream = null; }
     rec = null;
@@ -2704,53 +2316,23 @@ function chatView(chatId, title, peerUid = null) {
   }
 
   customBackHandler = () => {
-    if (selectedIds.size > 0) {
-      selectedIds.clear();
-      renderHeaderState();
-      renderMessages();
-      return true;
-    }
-    if (replyTarget) {
-      clearReply();
-      return true;
-    }
-    if (rec && rec.state !== 'inactive') {
-      cancelRec();
-      return true;
-    }
-    if (ep.classList.contains('on')) {
-      ep.classList.remove('on');
-      return true;
-    }
+    if (selectedIds.size > 0) { selectedIds.clear(); renderHeaderState(); renderMessages(); return true; }
+    if (replyTarget) { clearReply(); return true; }
+    if (rec && rec.state !== 'inactive') { cancelRec(); return true; }
+    if (ep.classList.contains('on')) { ep.classList.remove('on'); return true; }
     setDraft(chatId, tx.value);
-    clearTimeout(typingTimeout);
-    setTyping(false);
     home('chats', false);
     return true;
   };
 
-  function setTyping(val) {
-    const now = Date.now();
-    if (val) { if (isTypingNow && now - lastTypingWrite < 3000) return; }
-    else if (!isTypingNow) return;
-    isTypingNow = val;
-    lastTypingWrite = now;
-    chat.set({ typing: { [me.uid]: val ? now : 0 } }, { merge: true }).catch(() => {});
-  }
-
   function updateHeaderSub() {
     const subEl = document.getElementById('hsub');
     if (!subEl) return;
-    if (typingNames.length) subEl.textContent = `✍️ ${typingNames.join(', ')} likhche...`;
-    else if (peerUid && peerPres) {
+    if (peerUid && peerPres) {
       const canSee = peerUser?.privacy?.lastSeen !== false;
-      const st = fmtStatus(peerPres, canSee);
-      const ab = peerUser?.about ? ` • ${peerUser.about}` : '';
-      subEl.textContent = (st + ab).replace(/^ • /, '');
-    } else if (peerUid && peerUser?.about) {
-      subEl.textContent = peerUser.about;
+      subEl.textContent = fmtStatus(peerPres, canSee);
     } else if (!peerUid && chatMeta.members) {
-      subEl.textContent = `${chatMeta.members.length} jon sodosso • Tap for info`;
+      subEl.textContent = `${chatMeta.members.length} members`;
     } else subEl.textContent = '';
   }
 
@@ -2759,58 +2341,34 @@ function chatView(chatId, title, peerUid = null) {
     const isMuted = !!chatMeta.mutedBy?.[me.uid];
     const isArchived = !!chatMeta.archivedBy?.[me.uid];
     const isBlocked = peerUid ? myBlocked().includes(peerUid) : false;
-    const disHours = chatMeta.disappearHours || 0;
     const curWp = chatMeta.wallpaperBy?.[me.uid] || null;
 
     menuEl.innerHTML = `
-      ${!peerUid ? '<div id="cm_ginfo">👥 Group Info & Photo</div>' : ''}
-      <div id="cm_wp">🖼 Chat Wallpaper</div>
-      <div id="cm_dis">⏳ Disappearing (${disHours ? disHours + 'h' : 'Off'})</div>
-      <div id="cm_mute">${isMuted ? '🔔 Unmute Chat' : '🔇 Mute Chat'}</div>
-      <div id="cm_arch">${isArchived ? '📤 Unarchive Chat' : '📦 Archive Chat'}</div>
+      ${!peerUid ? '<div id="cm_ginfo">👥 Group Info</div>' : ''}
+      <div id="cm_wp">🖼 Wallpaper</div>
+      <div id="cm_mute">${isMuted ? '🔔 Unmute' : '🔇 Mute'}</div>
+      <div id="cm_arch">${isArchived ? '📤 Unarchive' : '📦 Archive'}</div>
       <div id="cm_clr">🧹 Clear Chat</div>
-      <div id="cm_del">🗑 Nijer dike theke chat delete</div>
-      ${peerUid ? `<div id="cm_blk" style="color:#e53935">${isBlocked ? '✅ Unblock User' : '🚫 Block User'}</div>` : ''}`;
+      <div id="cm_del">🗑 Delete Chat</div>
+      ${peerUid ? `<div id="cm_blk" style="color:#e53935">${isBlocked ? '✅ Unblock' : '🚫 Block'}</div>` : ''}`;
 
     const gi = document.getElementById('cm_ginfo');
     if (gi) gi.onclick = () => { menuEl.style.display = 'none'; groupInfoView(chatId); };
-
-    document.getElementById('cm_wp').onclick = () => {
-      menuEl.style.display = 'none';
-      openWallpaperModal(chatId, chat, curWp);
-    };
-    document.getElementById('cm_dis').onclick = async () => {
-      menuEl.style.display = 'none';
-      const next = disHours === 0 ? 24 : disHours === 24 ? 168 : 0;
-      await chat.set({ disappearHours: next }, { merge: true });
-      toast(next ? `Disappearing messages: ${next}h` : 'Disappearing messages off');
-    };
-    document.getElementById('cm_mute').onclick = async () => {
-      menuEl.style.display = 'none';
-      await chat.set({ mutedBy: { [me.uid]: !isMuted } }, { merge: true });
-      toast(!isMuted ? 'Chat mute kora hoyeche' : 'Chat unmute kora hoyeche');
-    };
+    document.getElementById('cm_wp').onclick = () => { menuEl.style.display = 'none'; openWallpaperModal(chatId, chat, curWp); };
+    document.getElementById('cm_mute').onclick = async () => { menuEl.style.display = 'none'; await chat.set({ mutedBy: { [me.uid]: !isMuted } }, { merge: true }); };
     document.getElementById('cm_arch').onclick = async () => {
       menuEl.style.display = 'none';
       await chat.set({ archivedBy: { [me.uid]: !isArchived } }, { merge: true });
-      toast(!isArchived ? 'Chat archive kora hoyeche' : 'Unarchive kora hoyeche');
       if (!isArchived) home('chats', false);
     };
     document.getElementById('cm_clr').onclick = async () => {
       menuEl.style.display = 'none';
-      if (!confirm('Ei chat-er sob message clear korte chan?')) return;
-      await chat.set({
-        deletedAt: { [me.uid]: firebase.firestore.FieldValue.serverTimestamp() },
-        lastMessage: ''
-      }, { merge: true });
-      toast('Chat clear hoyeche');
+      await chat.set({ deletedAt: { [me.uid]: firebase.firestore.FieldValue.serverTimestamp() }, lastMessage: '' }, { merge: true });
       renderMessages();
     };
     document.getElementById('cm_del').onclick = async () => {
       menuEl.style.display = 'none';
-      if (!confirm('Apnar dike theke ei chat delete korben?')) return;
       await chat.set({ deletedAt: { [me.uid]: firebase.firestore.FieldValue.serverTimestamp() } }, { merge: true });
-      toast('Chat delete hoyeche');
       home('chats', false);
     };
     const blk = document.getElementById('cm_blk');
@@ -2818,13 +2376,8 @@ function chatView(chatId, title, peerUid = null) {
       blk.onclick = async () => {
         menuEl.style.display = 'none';
         const FV = firebase.firestore.FieldValue;
-        await db.collection('users').doc(me.uid).set({
-          blocked: isBlocked ? FV.arrayRemove(peerUid) : FV.arrayUnion(peerUid)
-        }, { merge: true });
-        profile.blocked = isBlocked
-          ? myBlocked().filter(id => id !== peerUid)
-          : [...new Set([...myBlocked(), peerUid])];
-        toast(isBlocked ? 'Unblock kora hoyeche' : 'User-ke block kora hoyeche');
+        await db.collection('users').doc(me.uid).set({ blocked: isBlocked ? FV.arrayRemove(peerUid) : FV.arrayUnion(peerUid) }, { merge: true });
+        profile.blocked = isBlocked ? myBlocked().filter(id => id !== peerUid) : [...new Set([...myBlocked(), peerUid])];
         updateBlockedUI();
       };
     }
@@ -2832,19 +2385,9 @@ function chatView(chatId, title, peerUid = null) {
 
   function bindChatHeaderEvents() {
     const newHtitle = document.getElementById('htitle');
-    const newChav = document.getElementById('chav');
     const newCmenu = document.getElementById('cmenu');
-
-    document.getElementById('bk').onclick = () => {
-      setDraft(chatId, tx.value);
-      clearTimeout(typingTimeout);
-      setTyping(false);
-      cancelRec();
-      home('chats', false);
-    };
-    if (!peerUid) {
-      document.getElementById('hinfo').onclick = () => groupInfoView(chatId);
-    }
+    document.getElementById('bk').onclick = () => { setDraft(chatId, tx.value); cancelRec(); home('chats', false); };
+    if (!peerUid) document.getElementById('hinfo').onclick = () => groupInfoView(chatId);
     if (peerUid) {
       document.getElementById('acall').onclick = () => startCall(peerUid, newHtitle.textContent, false);
       document.getElementById('vcall').onclick = () => startCall(peerUid, newHtitle.textContent, true);
@@ -2862,10 +2405,6 @@ function chatView(chatId, title, peerUid = null) {
       rebuildMenu(newCmenu);
       newCmenu.style.display = newCmenu.style.display === 'none' ? 'block' : 'none';
     };
-    if (newChav) {
-      const pic = !peerUid ? (chatMeta.groupIcon || '') : (peerUser?.photo || '');
-      newChav.innerHTML = avHtml(pic, newHtitle.textContent, !peerUid);
-    }
   }
 
   function renderHeaderState() {
@@ -2873,57 +2412,30 @@ function chatView(chatId, title, peerUid = null) {
     if (selectedIds.size > 0) {
       chdr.classList.add('selhdr');
       chdr.innerHTML = `
-        <button id="selcls" title="Cancel">✕</button>
-        <span style="font-weight:700">${selectedIds.size} selected</span>
-        <span class="sp"></span>
-        <button id="selfwd" title="Forward">↪</button>
-        <button id="selstar" title="Star">⭐</button>
-        <button id="seldel" title="Delete">🗑</button>`;
-      document.getElementById('selcls').onclick = () => {
-        selectedIds.clear();
-        renderHeaderState();
-        renderMessages();
-      };
-      document.getElementById('selfwd').onclick = () => {
-        const list = [...selectedIds].map(id => msgCache[id]).filter(Boolean);
-        openForwardModal(list);
-      };
+        <button id="selcls">✕</button><span style="font-weight:700">${selectedIds.size}</span><span class="sp"></span>
+        <button id="selfwd">↪</button><button id="selstar">⭐</button><button id="seldel">🗑</button>`;
+      document.getElementById('selcls').onclick = () => { selectedIds.clear(); renderHeaderState(); renderMessages(); };
+      document.getElementById('selfwd').onclick = () => openForwardModal([...selectedIds].map(id => msgCache[id]).filter(Boolean));
       document.getElementById('selstar').onclick = async () => {
         const FV = firebase.firestore.FieldValue;
         for (const id of selectedIds) {
           const m = msgCache[id];
           if (!m || m.deleted) continue;
-          const preview = m.text || (m.docName ? `📄 ${m.docName}` : m.audio ? '🎤 Voice message' : m.image ? '📷 Photo' : 'Message');
+          const preview = m.text || (m.audio ? '🎤 Voice message' : m.image ? '📷 Photo' : 'Message');
           if (!myStarred().some(x => x.id === id)) {
             const entry = { id, chatId, chatTitle: curTitle, senderName: m.senderName || 'User', preview };
             await db.collection('users').doc(me.uid).set({ starred: FV.arrayUnion(entry) }, { merge: true });
             profile.starred = [...myStarred(), entry];
           }
         }
-        toast('Selected message gulo star kora hoyeche');
-        selectedIds.clear();
-        renderHeaderState();
-        renderMessages();
+        selectedIds.clear(); renderHeaderState(); renderMessages();
       };
       document.getElementById('seldel').onclick = async () => {
         const ids = [...selectedIds];
-        const allMine = ids.every(id => msgCache[id]?.senderId === me.uid);
-        const forEveryone = allMine && confirm('Selected sob message sobar jonno delete korben? (Cancel chaple shudhu apnar jonno hide hobe)');
         for (const id of ids) {
-          if (forEveryone) {
-            await chat.collection('messages').doc(id).update({
-              text: null, image: null, audio: null, docUrl: null, docName: null, deleted: true
-            }).catch(() => {});
-          } else {
-            await chat.collection('messages').doc(id).update({
-              hiddenFor: firebase.firestore.FieldValue.arrayUnion(me.uid)
-            }).catch(() => {});
-          }
+          await chat.collection('messages').doc(id).update({ hiddenFor: firebase.firestore.FieldValue.arrayUnion(me.uid) }).catch(() => {});
         }
-        toast('Selected message delete hoyeche');
-        selectedIds.clear();
-        renderHeaderState();
-        renderMessages();
+        selectedIds.clear(); renderHeaderState(); renderMessages();
       };
       return;
     }
@@ -2936,9 +2448,9 @@ function chatView(chatId, title, peerUid = null) {
         <span id="htitle">${esc(curTitle)}</span>
         <span class="hsub" id="hsub"></span>
       </div>
-      <button id="csbtn" title="Message Khujun">🔍</button>
-      ${peerUid ? '<button id="acall" title="Audio Call">📞</button><button id="vcall" title="Video Call">📹</button>' : ''}
-      <button id="cmore" title="Menu">⋮</button>
+      <button id="csbtn">🔍</button>
+      ${peerUid ? '<button id="acall">📞</button><button id="vcall">📹</button>' : ''}
+      <button id="cmore">⋮</button>
       <div class="menu top" id="cmenu" style="display:none"></div>`;
     bindChatHeaderEvents();
     updateHeaderSub();
@@ -2950,44 +2462,28 @@ function chatView(chatId, title, peerUid = null) {
     rbar.classList.add('on');
     tx.focus();
   }
-  function clearReply() {
-    replyTarget = null;
-    rbar.classList.remove('on');
-  }
+  function clearReply() { replyTarget = null; rbar.classList.remove('on'); }
   document.getElementById('rcl').onclick = clearReply;
   document.getElementById('cscls').onclick = () => {
     document.getElementById('csbox').style.display = 'none';
-    inChatQuery = '';
-    document.getElementById('csinp').value = '';
-    csresults.innerHTML = '';
-    renderMessages();
+    inChatQuery = ''; document.getElementById('csinp').value = ''; csresults.innerHTML = ''; renderMessages();
   };
-  document.getElementById('csinp').addEventListener('input', e => {
-    inChatQuery = e.target.value;
-    renderMessages();
-  });
+  document.getElementById('csinp').addEventListener('input', e => { inChatQuery = e.target.value; renderMessages(); });
 
-  const closeMenu = () => {
-    const m = document.getElementById('cmenu');
-    if (m) m.style.display = 'none';
-  };
+  const closeMenu = () => { const m = document.getElementById('cmenu'); if (m) m.style.display = 'none'; };
   document.addEventListener('click', closeMenu);
   addSub(() => document.removeEventListener('click', closeMenu));
 
   function updateBlockedUI() {
     const slot = document.getElementById('inputslot');
     if (!slot || !peerUid) return;
-    const iBlocked = myBlocked().includes(peerUid);
-    const theyBlocked = Array.isArray(peerUser?.blocked) && peerUser.blocked.includes(me.uid);
-    if (iBlocked) {
-      slot.innerHTML = `<div class="blockedbar">🚫 Apni ei user-ke block korechen. <button class="btn sm" id="unblkbtn" style="margin-left:8px;padding:4px 10px">${esc(tr('unblkBtn'))}</button></div>`;
+    if (myBlocked().includes(peerUid)) {
+      slot.innerHTML = `<div class="blockedbar">🚫 Blocked <button class="btn sm" id="unblkbtn" style="margin-left:8px;padding:4px 10px">${esc(tr('unblkBtn'))}</button></div>`;
       document.getElementById('unblkbtn').onclick = async () => {
         await db.collection('users').doc(me.uid).set({ blocked: firebase.firestore.FieldValue.arrayRemove(peerUid) }, { merge: true });
         profile.blocked = myBlocked().filter(id => id !== peerUid);
         chatView(chatId, document.getElementById('htitle')?.textContent || title, peerUid);
       };
-    } else if (theyBlocked) {
-      slot.innerHTML = `<div class="blockedbar">Ei user-ke message ba call pathano jabe na.</div>`;
     }
   }
 
@@ -2999,46 +2495,21 @@ function chatView(chatId, title, peerUid = null) {
       tx.value = tx.value.slice(0, start) + b.textContent + tx.value.slice(end);
       setDraft(chatId, tx.value);
       tx.focus();
-      setTyping(true);
     };
   });
   document.getElementById('ebtn').onclick = () => ep.classList.toggle('on');
-
-  tx.addEventListener('input', () => {
-    setDraft(chatId, tx.value);
-    setTyping(true);
-    clearTimeout(typingTimeout);
-    typingTimeout = setTimeout(() => setTyping(false), 2000);
-  });
+  tx.addEventListener('input', () => setDraft(chatId, tx.value));
 
   function applyChatWallpaper() {
     const wp = chatMeta.wallpaperBy?.[me.uid];
-    if (wp?.image && safeMedia(wp.image)) {
-      ms.style.backgroundImage = `url("${wp.image}")`;
-      ms.style.backgroundColor = '';
-    } else if (wp?.color) {
-      ms.style.backgroundImage = 'none';
-      ms.style.backgroundColor = wp.color;
-    } else {
-      ms.style.backgroundImage = 'none';
-      ms.style.backgroundColor = isDarkMode() ? '#0b141a' : '#efeae2';
-    }
+    if (wp?.color) { ms.style.backgroundImage = 'none'; ms.style.backgroundColor = wp.color; }
+    else { ms.style.backgroundImage = 'none'; ms.style.backgroundColor = isDarkMode() ? '#0b141a' : '#efeae2'; }
   }
 
   if (peerUid) {
     addSub(db.collection('presence').doc(peerUid).onSnapshot(d => {
       peerPres = d.exists ? d.data() : null;
       updateHeaderSub();
-    }, () => {}));
-    addSub(db.collection('users').doc(peerUid).onSnapshot(d => {
-      peerUser = d.exists ? d.data() : null;
-      userProfilesCache[peerUid] = peerUser;
-      const tEl = document.getElementById('htitle');
-      const avEl = document.getElementById('chav');
-      if (peerUser?.name && tEl) tEl.textContent = peerUser.name;
-      if (avEl) avEl.innerHTML = avHtml(peerUser?.photo, tEl?.textContent || title, false);
-      updateHeaderSub();
-      updateBlockedUI();
     }, () => {}));
   }
 
@@ -3047,100 +2518,55 @@ function chatView(chatId, title, peerUid = null) {
     const pin = chatMeta.pinnedMessage;
     if (!pin || !pin.id) { pinslot.innerHTML = ''; return; }
     pinslot.innerHTML = `<div class="pinbar" id="pinjump">
-      <span>📌</span>
-      <span class="ptxt"><b>${esc(pin.senderName || 'User')}:</b> ${esc(pin.preview || '')}</span>
-      <button class="btn sm" id="pinun" style="padding:3px 8px;font-size:11px">Unpin</button>
+      <span>📌</span><span class="ptxt"><b>${esc(pin.senderName || 'User')}:</b> ${esc(pin.preview || '')}</span>
+      <button class="btn sm" id="pinun" style="padding:3px 8px;font-size:11px">${esc(tr('unpinBtn'))}</button>
     </div>`;
-    document.getElementById('pinjump').onclick = e => {
-      if (e.target.id === 'pinun') return;
-      jumpAndHighlightMsg(pin.id);
-    };
-    document.getElementById('pinun').onclick = async e => {
-      e.stopPropagation();
-      await chat.set({ pinnedMessage: null }, { merge: true });
-      toast('Message unpin hoyeche');
-    };
+    document.getElementById('pinjump').onclick = e => { if (e.target.id !== 'pinun') jumpAndHighlightMsg(pin.id); };
+    document.getElementById('pinun').onclick = async e => { e.stopPropagation(); await chat.set({ pinnedMessage: null }, { merge: true }); };
   }
 
   addSub(chat.onSnapshot(d => {
     if (!d.exists) return;
     chatMeta = d.data();
     const tEl = document.getElementById('htitle');
-    const avEl = document.getElementById('chav');
     if (!peerUid && chatMeta.name && tEl) tEl.textContent = chatMeta.name;
-    if (!peerUid && avEl) avEl.innerHTML = avHtml(chatMeta.groupIcon || '', tEl?.textContent || title, true);
     applyChatWallpaper();
-    typingNames = Object.entries(chatMeta.typing || {})
-      .filter(([uid, v]) => uid !== me.uid && isTyping(v))
-      .map(([uid]) => chatMeta.memberNames?.[uid] || 'Keu');
     updateHeaderSub();
     renderPinBanner();
-    clearTimeout(typingClear);
-    if (typingNames.length) typingClear = setTimeout(() => { typingNames = []; updateHeaderSub(); }, 6500);
     renderMessages();
   }));
 
   document.getElementById('reccncl').onclick = cancelRec;
-  document.getElementById('recstop').onclick = () => { if (rec && rec.state !== 'inactive') rec.stop(); };
+  document.getElementById('recstop').onclick = () => { if (rec && rec.state !== 'inactive') { try { rec.stop(); } catch (e) {} } };
   bindChatHeaderEvents();
-
-  const markRead = () => {
-    if (!sendReceiptsPref()) return;
-    lastDocs.forEach(docSnap => {
-      const m = docSnap.data();
-      if (m.senderId !== me.uid && !m.deleted) {
-        const updates = {};
-        if (!(m.deliveredTo || []).includes(me.uid)) updates.deliveredTo = firebase.firestore.FieldValue.arrayUnion(me.uid);
-        if (document.visibilityState === 'visible' && !(m.seenBy || []).includes(me.uid)) updates.seenBy = firebase.firestore.FieldValue.arrayUnion(me.uid);
-        if (Object.keys(updates).length) docSnap.ref.update(updates).catch(() => {});
-      }
-    });
-  };
-  const onVisRead = () => { if (document.visibilityState === 'visible') markRead(); };
-  document.addEventListener('visibilitychange', onVisRead);
-  addSub(() => document.removeEventListener('visibilitychange', onVisRead));
 
   function renderMessages() {
     const atBottom = ms.scrollHeight - ms.scrollTop - ms.clientHeight < 120;
     const delTs = tsMs(chatMeta.deletedAt?.[me.uid]);
     const q = inChatQuery.trim().toLowerCase();
     const starredIds = new Set(myStarred().map(x => x.id));
-    const now = Date.now();
     msgCache = {};
 
     const visibleDocs = lastDocs.filter(d => {
       const m = d.data();
       if (Array.isArray(m.hiddenFor) && m.hiddenFor.includes(me.uid)) return false;
       const mTs = tsMs(m.createdAt);
-      if (m.expiresAt && now > m.expiresAt) return false;
-      if (delTs && mTs && mTs <= delTs) return false;
-      return true;
+      return !(delTs && mTs && mTs <= delTs);
     });
 
     if (q) {
       const matches = visibleDocs.filter(d => {
         const m = d.data();
-        if (m.deleted) return false;
-        return (m.text || '').toLowerCase().includes(q)
-          || (m.senderName || '').toLowerCase().includes(q)
-          || (m.docName || '').toLowerCase().includes(q);
+        return !m.deleted && ((m.text || '').toLowerCase().includes(q) || (m.senderName || '').toLowerCase().includes(q));
       });
-      if (matches.length) {
-        csresults.innerHTML = `<div style="max-height:140px;overflow:auto;background:var(--card);border-bottom:1px solid var(--bd)">` +
-          matches.slice(0, 12).map(d => {
+      csresults.innerHTML = matches.length
+        ? `<div style="max-height:130px;overflow:auto;background:var(--card);border-bottom:1px solid var(--bd)">` +
+          matches.slice(0, 10).map(d => {
             const m = d.data();
-            const pv = m.text || (m.docName ? `📄 ${m.docName}` : 'Message');
-            return `<div class="row jhit" data-mid="${d.id}" style="padding:8px 12px">
-              <div class="mid"><div class="t" style="font-size:12.5px">${esc(m.senderName || 'User')}</div><div class="s" style="font-size:12.5px">${esc(pv)}</div></div>
-              <span class="hint" style="margin:0">Jump</span>
-            </div>`;
-          }).join('') + `</div>`;
-        csresults.querySelectorAll('.jhit').forEach(row => {
-          row.onclick = () => jumpAndHighlightMsg(row.dataset.mid);
-        });
-      } else {
-        csresults.innerHTML = `<div class="pinbar"><span>🔍 Kono message pawa jayni</span></div>`;
-      }
+            return `<div class="row jhit" data-mid="${d.id}" style="padding:8px 12px"><div class="mid"><div class="t" style="font-size:12.5px">${esc(m.senderName || 'User')}</div><div class="s" style="font-size:12.5px">${esc(m.text || 'Message')}</div></div><span class="hint" style="margin:0">Jump</span></div>`;
+          }).join('') + `</div>`
+        : `<div class="pinbar"><span>${esc(tr('noSearch'))}</span></div>`;
+      csresults.querySelectorAll('.jhit').forEach(row => { row.onclick = () => jumpAndHighlightMsg(row.dataset.mid); });
     } else {
       csresults.innerHTML = '';
     }
@@ -3156,8 +2582,7 @@ function chatView(chatId, title, peerUid = null) {
       if (m.deleted) {
         return `<div class="b ${mine ? 'me' : ''} ${isSel ? 'selected' : ''}" data-id="${d.id}">
           ${mine ? '' : `<div class="n">${esc(m.senderName)}</div>`}
-          <span class="del">🚫 Ei message-ti sobar jonno delete kora hoyeche</span>
-          <span class="tm">${tm}</span></div>`;
+          <span class="del">🚫 Deleted</span><span class="tm">${tm}</span></div>`;
       }
 
       const rxMap = m.reactions || {};
@@ -3167,51 +2592,30 @@ function chatView(chatId, title, peerUid = null) {
         ? `<div class="reacts">${Object.entries(counts).map(([em, cnt]) => `<span class="rpill">${esc(em)}${cnt > 1 ? ' ' + cnt : ''}</span>`).join('')}</div>`
         : '';
 
-      const ext = (m.audioMime || '').includes('mp4') ? 'mp4' : (m.audioMime || '').includes('ogg') ? 'ogg' : 'webm';
       const isSt = starredIds.has(d.id);
       const isPinned = chatMeta.pinnedMessage?.id === d.id;
       const safeImg = safeMedia(m.image);
-      const safeDocUrl = safeDoc(m.docUrl);
-
-      let seenLine = '';
-      if (mine && sendReceiptsPref()) {
-        const seenOtherIds = (m.seenBy || []).filter(uid => uid !== me.uid);
-        if (!peerUid && seenOtherIds.length) {
-          const names = seenOtherIds.map(uid => chatMeta.memberNames?.[uid] || uid);
-          seenLine = `<div class="seenby">👁 ${esc(tr('seenBy'))}: ${esc(names.join(', '))}</div>`;
-        } else {
-          const statusLbl = seenOtherIds.length
-            ? '✓✓ Seen'
-            : (m.deliveredTo || []).some(uid => uid !== me.uid)
-              ? '✓✓ Delivered'
-              : '✓ Sent';
-          seenLine = '';
-          var inlineReceipt = `<span class="receipt">${statusLbl}</span>`;
-        }
-      }
-      if (typeof inlineReceipt === 'undefined') var inlineReceipt = '';
+      const safeAud = safeMedia(m.audio);
 
       return `<div class="b ${mine ? 'me' : ''} ${isSel ? 'selected' : ''}" data-id="${d.id}">
         ${mine ? '' : `<div class="n">${esc(m.senderName)}</div>`}
         ${m.forwarded ? '<div class="fwd">↪ Forwarded</div>' : ''}
         ${m.replyTo ? `<div class="qbox"><b>${esc(m.replyTo.senderName || 'User')}</b>${esc(m.replyTo.preview || '')}</div>` : ''}
-        ${safeImg ? `<img class="zoomimg" src="${esc(safeImg)}" data-cap="${esc(m.text || '')}"><a class="dl" href="${esc(safeImg)}" target="_blank" rel="noopener" download="photo.jpg">⬇ Download</a>` : ''}
-        ${safeDocUrl ? `<a class="docbox" href="${esc(safeDocUrl)}" target="_blank" rel="noopener" download="${esc(m.docName || 'document')}"><span>📄</span><span><b>${esc(m.docName || 'Document')}</b><br><small>Tap to open / download</small></span></a>` : ''}
-        ${safeMedia(m.audio) ? `<audio controls preload="none" src="${esc(safeMedia(m.audio))}"></audio><button type="button" class="spdbtn" data-spd="1">1x</button><a class="dl" href="${esc(safeMedia(m.audio))}" target="_blank" rel="noopener" download="voice-message.${ext}">⬇ Download</a>` : ''}
+        ${safeImg ? `<img class="zoomimg" loading="lazy" src="${esc(safeImg)}" data-cap="${esc(m.text || '')}">` : ''}
+        ${safeAud ? `<audio controls preload="metadata" src="${esc(safeAud)}"></audio><button type="button" class="spdbtn" data-spd="1">1x</button>` : ''}
         ${m.text ? `<span class="txt">${formatTextWithLinks(m.text)}</span>${buildLinkPreviewHtml(m.text)}` : ''}${m.edited ? '<span class="ed">(edited)</span>' : ''}
-        <span class="tm">${tm}${inlineReceipt}</span>
-        ${seenLine}
+        <span class="tm">${tm}</span>
         ${rxHtml}
         <div class="act">
           ${REACTIONS.map(em => `<span class="rx" data-em="${em}">${em}</span>`).join('')}
           <span class="mcopy">📋 ${esc(tr('copyBtn'))}</span>
-          <span class="msel">☑ Select</span>
-          <span class="mrep">↩ Reply</span>
-          <span class="mstar">${isSt ? '★ Unstar' : '☆ Star'}</span>
-          <span class="mpin">${isPinned ? 'Unpin' : '📌 Pin'}</span>
-          <span class="mfwd">↪ Forward</span>
-          ${mine && m.text ? '<span class="medit">✎ Edit</span>' : ''}
-          ${mine ? '<span class="mdel">🗑 Delete</span>' : ''}
+          <span class="msel">☑ ${esc(tr('selectBtn'))}</span>
+          <span class="mrep">↩ ${esc(tr('replyBtn'))}</span>
+          <span class="mstar">${isSt ? '★ ' + esc(tr('unstarBtn')) : '☆ ' + esc(tr('starBtn'))}</span>
+          <span class="mpin">${isPinned ? esc(tr('unpinBtn')) : '📌 ' + esc(tr('pinBtn'))}</span>
+          <span class="mfwd">↪ ${esc(tr('forwardBtn'))}</span>
+          ${mine && m.text ? `<span class="medit">✎ ${esc(tr('editBtn'))}</span>` : ''}
+          ${mine ? `<span class="mdel">🗑 ${esc(tr('deleteBtn'))}</span>` : ''}
         </div>
       </div>`;
     }).join('');
@@ -3229,10 +2633,7 @@ function chatView(chatId, title, peerUid = null) {
     });
 
     ms.querySelectorAll('.zoomimg').forEach(img => {
-      img.onclick = e => {
-        e.stopPropagation();
-        openLightbox(img.src, img.dataset.cap || '', false);
-      };
+      img.onclick = e => { e.stopPropagation(); openLightbox(img.src, img.dataset.cap || '', false); };
     });
 
     const toggleSelect = id => {
@@ -3245,10 +2646,7 @@ function chatView(chatId, title, peerUid = null) {
     ms.querySelectorAll('.b[data-id]').forEach(b => {
       b.onclick = e => {
         if (e.target.closest('.act') || e.target.closest('audio') || e.target.closest('a') || e.target.closest('.zoomimg') || e.target.closest('.spdbtn')) return;
-        if (selectedIds.size > 0) {
-          toggleSelect(b.dataset.id);
-          return;
-        }
+        if (selectedIds.size > 0) { toggleSelect(b.dataset.id); return; }
         b.classList.toggle('open');
       };
     });
@@ -3256,132 +2654,80 @@ function chatView(chatId, title, peerUid = null) {
     ms.querySelectorAll('.mcopy').forEach(btn => {
       btn.onclick = async e => {
         e.stopPropagation();
-        const id = btn.closest('.b').dataset.id;
-        const m = msgCache[id];
-        const copyStr = (m && (m.text || m.docName)) || '';
-        if (!copyStr) return toast('Copy korar moto text nei');
-        try {
-          if (navigator.clipboard && navigator.clipboard.writeText) await navigator.clipboard.writeText(copyStr);
-        } catch (err) {}
+        const txt = msgCache[btn.closest('.b').dataset.id]?.text || '';
+        if (!txt) return;
+        try { if (navigator.clipboard?.writeText) await navigator.clipboard.writeText(txt); } catch (err) {}
         toast(tr('copied'));
       };
     });
-
-    ms.querySelectorAll('.msel').forEach(btn => {
-      btn.onclick = e => {
-        e.stopPropagation();
-        const id = btn.closest('.b').dataset.id;
-        toggleSelect(id);
-      };
-    });
-
+    ms.querySelectorAll('.msel').forEach(btn => { btn.onclick = e => { e.stopPropagation(); toggleSelect(btn.closest('.b').dataset.id); }; });
     ms.querySelectorAll('.rx').forEach(btn => {
       btn.onclick = async e => {
         e.stopPropagation();
         const id = btn.closest('.b').dataset.id;
         const em = btn.dataset.em;
         const cur = msgCache[id]?.reactions?.[me.uid];
-        const nextVal = cur === em ? firebase.firestore.FieldValue.delete() : em;
-        try {
-          await chat.collection('messages').doc(id).update({ [`reactions.${me.uid}`]: nextVal });
-        } catch (err) { toast('Reaction dewa jayni'); }
+        try { await chat.collection('messages').doc(id).update({ [`reactions.${me.uid}`]: cur === em ? firebase.firestore.FieldValue.delete() : em }); } catch (err) {}
       };
     });
-
     ms.querySelectorAll('.mrep').forEach(btn => {
       btn.onclick = e => {
         e.stopPropagation();
         const id = btn.closest('.b').dataset.id;
         const m = msgCache[id];
         if (!m) return;
-        const preview = m.text || (m.docName ? `📄 ${m.docName}` : m.audio ? '🎤 Voice message' : m.image ? '📷 Photo' : 'Message');
-        setReply(id, m.senderName || 'User', preview);
+        setReply(id, m.senderName || 'User', m.text || (m.audio ? '🎤 Voice message' : m.image ? '📷 Photo' : 'Message'));
       };
     });
-
     ms.querySelectorAll('.mstar').forEach(btn => {
       btn.onclick = async e => {
         e.stopPropagation();
         const id = btn.closest('.b').dataset.id;
         const m = msgCache[id];
         if (!m) return;
-        const preview = m.text || (m.docName ? `📄 ${m.docName}` : m.audio ? '🎤 Voice message' : m.image ? '📷 Photo' : 'Message');
+        const preview = m.text || (m.audio ? '🎤 Voice message' : m.image ? '📷 Photo' : 'Message');
         const existing = myStarred().find(x => x.id === id);
         if (existing) {
           await db.collection('users').doc(me.uid).set({ starred: firebase.firestore.FieldValue.arrayRemove(existing) }, { merge: true });
           profile.starred = myStarred().filter(x => x.id !== id);
-          toast('Starred theke bad dewa hoyeche');
         } else {
-          const curTitle = document.getElementById('htitle')?.textContent || title;
-          const entry = { id, chatId, chatTitle: curTitle, senderName: m.senderName || 'User', preview };
+          const entry = { id, chatId, chatTitle: document.getElementById('htitle')?.textContent || title, senderName: m.senderName || 'User', preview };
           await db.collection('users').doc(me.uid).set({ starred: firebase.firestore.FieldValue.arrayUnion(entry) }, { merge: true });
           profile.starred = [...myStarred(), entry];
-          toast('Starred message-e save hoyeche');
         }
         renderMessages();
       };
     });
-
     ms.querySelectorAll('.mpin').forEach(btn => {
       btn.onclick = async e => {
         e.stopPropagation();
         const id = btn.closest('.b').dataset.id;
         const m = msgCache[id];
         if (!m) return;
-        if (chatMeta.pinnedMessage?.id === id) {
-          await chat.set({ pinnedMessage: null }, { merge: true });
-          toast('Unpin hoyeche');
-        } else {
-          const preview = m.text || (m.docName ? `📄 ${m.docName}` : m.audio ? '🎤 Voice message' : m.image ? '📷 Photo' : 'Message');
-          await chat.set({ pinnedMessage: { id, senderName: m.senderName || 'User', preview } }, { merge: true });
-          toast('Message pin hoyeche');
-        }
+        if (chatMeta.pinnedMessage?.id === id) await chat.set({ pinnedMessage: null }, { merge: true });
+        else await chat.set({ pinnedMessage: { id, senderName: m.senderName || 'User', preview: m.text || (m.audio ? '🎤 Voice message' : '📷 Photo') } }, { merge: true });
       };
     });
-
     ms.querySelectorAll('.mfwd').forEach(btn => {
-      btn.onclick = e => {
-        e.stopPropagation();
-        const id = btn.closest('.b').dataset.id;
-        const m = msgCache[id];
-        if (m) openForwardModal(m);
-      };
+      btn.onclick = e => { e.stopPropagation(); const m = msgCache[btn.closest('.b').dataset.id]; if (m) openForwardModal(m); };
     });
-
     ms.querySelectorAll('.medit').forEach(btn => {
       btn.onclick = async e => {
         e.stopPropagation();
         const id = btn.closest('.b').dataset.id;
         const cur = msgCache[id]?.text || '';
-        const next = prompt('Notun message likhun:', cur);
+        const next = prompt('Edit message:', cur);
         if (next === null) return;
         const trimmed = next.trim();
         if (!trimmed || trimmed === cur) return;
-        try {
-          await chat.collection('messages').doc(id).update({ text: trimmed, edited: true });
-          toast('Message edit hoyeche');
-        } catch (err) { toast('Edit kora jayni: ' + err.message); }
+        try { await chat.collection('messages').doc(id).update({ text: trimmed, edited: true }); } catch (err) {}
       };
     });
-
     ms.querySelectorAll('.mdel').forEach(btn => {
       btn.onclick = async e => {
         e.stopPropagation();
         const id = btn.closest('.b').dataset.id;
-        const everyone = confirm('Sobar jonno delete korben? (OK = Sobar jonno, Cancel = Shudhu amar jonno)');
-        try {
-          if (everyone) {
-            await chat.collection('messages').doc(id).update({
-              text: null, image: null, audio: null, docUrl: null, docName: null, deleted: true
-            });
-            toast('Sobar jonno message delete hoyeche');
-          } else {
-            await chat.collection('messages').doc(id).update({
-              hiddenFor: firebase.firestore.FieldValue.arrayUnion(me.uid)
-            });
-            toast('Message hide hoyeche');
-          }
-        } catch (err) { toast('Delete kora jayni: ' + err.message); }
+        try { await chat.collection('messages').doc(id).update({ hiddenFor: firebase.firestore.FieldValue.arrayUnion(me.uid) }); } catch (err) {}
       };
     });
 
@@ -3391,85 +2737,92 @@ function chatView(chatId, title, peerUid = null) {
     }
   }
 
-  addSub(chat.collection('messages').orderBy('createdAt').limitToLast(250).onSnapshot(snap => {
+  // Keep `limitToLast(40)` to stay light on free Firestore quota
+  addSub(chat.collection('messages').orderBy('createdAt').limitToLast(40).onSnapshot(snap => {
     lastDocs = snap.docs;
-    markRead();
     renderMessages();
   }));
 
-  async function send(text, image, audio, audioMime, docUrl, docName) {
-    if (peerUid && myBlocked().includes(peerUid)) throw new Error('User blocked ache');
+  async function send(text, image, audio, audioMime) {
+    if (peerUid && myBlocked().includes(peerUid)) throw new Error('User is blocked');
     const FV = firebase.firestore.FieldValue;
     const rep = replyTarget ? { ...replyTarget } : null;
-    const disHours = chatMeta.disappearHours || 0;
-    const expiresAt = disHours > 0 ? Date.now() + disHours * 3600 * 1000 : null;
     clearReply();
     await chat.collection('messages').add({
-      senderId: me.uid,
-      senderName: myName(),
-      text: text || null,
-      image: image || null,
-      audio: audio || null,
-      audioMime: audioMime || null,
-      docUrl: docUrl || null,
-      docName: docName || null,
-      expiresAt,
-      replyTo: rep,
-      reactions: {},
-      hiddenFor: [],
-      edited: false,
-      deleted: false,
-      deliveredTo: [me.uid],
-      seenBy: [me.uid],
+      senderId: me.uid, senderName: myName(),
+      text: text || null, image: image || null,
+      audio: audio || null, audioMime: audioMime || null,
+      replyTo: rep, reactions: {}, hiddenFor: [],
+      edited: false, deleted: false,
+      deliveredTo: [me.uid], seenBy: [me.uid],
       createdAt: FV.serverTimestamp()
     });
-    const last = docName ? `📄 ${docName}` : audio ? '🎤 Voice message' : image ? (text ? `📷 ${text}` : '📷 Photo') : text;
+    const last = audio ? '🎤 Voice message' : image ? '📷 Photo' : text;
     await chat.set({
       lastMessage: last,
       updatedAt: FV.serverTimestamp(),
-      typing: { [me.uid]: 0 },
       archivedBy: { [me.uid]: false }
     }, { merge: true });
-    isTypingNow = false;
+  }
+
+  function createRecorder(stream) {
+    const candidates = ['audio/webm;codecs=opus', 'audio/webm', 'audio/mp4', 'audio/ogg;codecs=opus'];
+    const supported = candidates.find(t => typeof MediaRecorder.isTypeSupported === 'function' && MediaRecorder.isTypeSupported(t));
+    try {
+      return supported ? { recorder: new MediaRecorder(stream, { mimeType: supported }), mime: supported } : { recorder: new MediaRecorder(stream), mime: 'audio/webm' };
+    } catch (e) {
+      return { recorder: new MediaRecorder(stream), mime: 'audio/webm' };
+    }
   }
 
   document.getElementById('mic').onclick = async () => {
-    if (rec && rec.state !== 'inactive') { rec.stop(); return; }
+    if (rec && rec.state !== 'inactive') {
+      try { rec.stop(); } catch (e) { cleanupRec(); }
+      return;
+    }
     try {
       discardRec = false;
-      if (!window.MediaRecorder) throw new Error('Ei browser-e voice recording supported noy');
-      recStream = await navigator.mediaDevices.getUserMedia({ audio: true });
-      const mime = ['audio/webm;codecs=opus', 'audio/webm', 'audio/mp4'].find(t => window.MediaRecorder && MediaRecorder.isTypeSupported(t));
-      rec = new MediaRecorder(recStream, mime ? { mimeType: mime, audioBitsPerSecond: 20000 } : {});
+      if (!navigator.mediaDevices?.getUserMedia || typeof MediaRecorder === 'undefined') {
+        throw new Error('Voice recording unavailable in this browser.');
+      }
+      recStream = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: true, noiseSuppression: true } });
+      const built = createRecorder(recStream);
+      rec = built.recorder;
+      activeAudioMime = built.mime || rec.mimeType || 'audio/webm';
       recChunks = [];
-      rec.ondataavailable = e => { if (e.data.size) recChunks.push(e.data); };
+
+      rec.ondataavailable = e => { if (e.data && e.data.size > 0) recChunks.push(e.data); };
+      rec.onerror = () => { toast('Recording error'); cancelRec(); };
       rec.onstop = async () => {
-        const type = (rec && rec.mimeType) || 'audio/webm';
-        const blob = new Blob(recChunks, { type });
+        const finalMime = rec?.mimeType || activeAudioMime || 'audio/webm';
+        const blob = new Blob(recChunks, { type: finalMime });
         const wasDiscarded = discardRec;
         cleanupRec();
-        if (wasDiscarded || blob.size < 800) return;
+        if (wasDiscarded) return;
+        if (!blob.size || blob.size < 200) { toast('Voice clip too short'); return; }
         try {
-          const b64 = blob.size < 650000 ? await blobToDataURL(blob) : null;
-          const ext = type.includes('mp4') ? 'mp4' : 'webm';
-          const url = await uploadMedia(chatId, blob, ext, b64, false);
-          await send(null, null, url, type, null, null);
+          const dataUrl = await prepareFreeMedia(blob, 'voice');
+          await send(null, null, dataUrl, finalMime);
+          toast(tr('voiceSent'));
         } catch (ex) {
-          toast('Voice pathano gelo na: ' + ex.message);
+          toast(ex.message || 'Voice send failed');
         }
       };
-      rec.start();
+
+      rec.start(250);
       recbar.classList.add('on');
       secCounter = 0;
       rectm.textContent = '00:00';
       recTimer = setInterval(() => {
         secCounter += 1;
         rectm.textContent = fmtSec(secCounter);
-        if (secCounter >= 120 && rec && rec.state !== 'inactive') rec.stop();
+        if (secCounter >= MAX_FREE_VOICE_SEC && rec && rec.state !== 'inactive') {
+          try { rec.stop(); } catch (e) {}
+        }
       }, 1000);
     } catch (ex) {
       cancelRec();
-      toast('Microphone chalu korte parini. Permission din.');
+      toast(ex?.name === 'NotAllowedError' ? 'Microphone permission blocked.' : (ex?.message || 'Mic error'));
     }
   };
 
@@ -3478,66 +2831,40 @@ function chatView(chatId, title, peerUid = null) {
     tx.value = '';
     setDraft(chatId, '');
     ep.classList.remove('on');
-    try { await send(t); } catch (e) { toast('Pathano gelo na: ' + e.message); }
+    try { await send(t); } catch (e) { toast(e.message); }
   };
   document.getElementById('sd').onclick = sendText;
   tx.addEventListener('keydown', e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendText(); } });
 
   document.getElementById('ph').onclick = () => document.getElementById('fi').click();
-  document.getElementById('fi').onchange = async (e) => {
+  document.getElementById('fi').onchange = async e => {
     const f = e.target.files[0]; if (!f) return;
     try {
-      if (!f.type.startsWith('image/')) throw new Error('Valid image file select korun');
-      const capInput = prompt('Photo caption (optional):', '');
-      if (capInput === null) { e.target.value = ''; return; }
-      const small = await shrink(f);
-      const photoBlob = await (await fetch(small.dataUrl)).blob();
-      const url = await uploadMedia(chatId, photoBlob, 'jpg', small.dataUrl, false);
-      await send(capInput.trim() || null, url, null, null, null, null);
+      if (!f.type.startsWith('image/')) throw new Error('Select a valid image');
+      const small = await shrink(f, 300, 0.4);
+      const dataUrl = await prepareFreeMedia(small.dataUrl, 'image');
+      await send(null, dataUrl, null, null);
+      toast(tr('photoSent'));
     } catch (ex) {
-      toast('Photo pathano gelo na: ' + ex.message);
+      toast(ex.message || 'Photo send failed');
     }
     e.target.value = '';
   };
 
   document.getElementById('cambtn').onclick = () => {
-    openCameraModal(async (dataUrl, caption) => {
+    openCameraModal(async dataUrl => {
       try {
-        const blob = await (await fetch(dataUrl)).blob();
-        const url = await uploadMedia(chatId, blob, 'jpg', dataUrl, false);
-        await send(caption, url, null, null, null, null);
+        const cleanUrl = await prepareFreeMedia(dataUrl, 'image');
+        await send(null, cleanUrl, null, null);
+        toast(tr('photoSent'));
       } catch (ex) {
-        toast('Camera photo pathano jayni: ' + ex.message);
+        toast(ex.message || 'Camera send failed');
       }
     });
   };
-
-  document.getElementById('docbtn').onclick = () => document.getElementById('dfi').click();
-  document.getElementById('dfi').onchange = async (e) => {
-    const f = e.target.files[0]; if (!f) return;
-    try {
-      const ext = (f.name.split('.').pop() || 'file').toLowerCase();
-      const b64 = f.size < 650000 ? await blobToDataURL(f) : null;
-      const url = await uploadMedia(chatId, f, ext, b64, true);
-      await send(null, null, null, null, url, f.name);
-      toast('Document pathano hoyeche');
-    } catch (ex) {
-      toast('Document pathano gelo na: ' + ex.message);
-    }
-    e.target.value = '';
-  };
 }
 
-function blobToDataURL(blob) {
-  return new Promise((res, rej) => {
-    const r = new FileReader();
-    r.onload = () => res(r.result);
-    r.onerror = () => rej(new Error('File porte parini'));
-    r.readAsDataURL(blob);
-  });
-}
-
-function shrink(file, max = 720) {
+function shrink(file, max = 300, quality = 0.4) {
   return new Promise((res, rej) => {
     const img = new Image();
     const objUrl = URL.createObjectURL(file);
@@ -3545,13 +2872,14 @@ function shrink(file, max = 720) {
       URL.revokeObjectURL(objUrl);
       const s = Math.min(1, max / Math.max(img.width, img.height));
       const c = document.createElement('canvas');
-      c.width = Math.round(img.width * s); c.height = Math.round(img.height * s);
+      c.width = Math.round(img.width * s);
+      c.height = Math.round(img.height * s);
       const ctx = c.getContext('2d');
-      if (!ctx) return rej(new Error('Image process kora jayni'));
+      if (!ctx) return rej(new Error('Image process failed'));
       ctx.drawImage(img, 0, 0, c.width, c.height);
-      res({ dataUrl: c.toDataURL('image/jpeg', 0.55) });
+      res({ dataUrl: c.toDataURL('image/jpeg', quality) });
     };
-    img.onerror = () => { URL.revokeObjectURL(objUrl); rej(new Error('Chobi khola gelo na')); };
+    img.onerror = () => { URL.revokeObjectURL(objUrl); rej(new Error('Image load failed')); };
     img.src = objUrl;
   });
 }
