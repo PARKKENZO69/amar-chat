@@ -185,6 +185,7 @@
   .swatch.on{outline:3px solid var(--g)}
   .medgrid{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}
   .medgrid img{width:100%;aspect-ratio:1/1;object-fit:cover;border-radius:8px;cursor:pointer}
+  .appcredit{text-align:center;color:var(--sub);font-size:12.5px;font-weight:600;padding:8px 0 22px}
 
   .modal{position:fixed;inset:0;background:#0008;z-index:120;display:flex;align-items:center;justify-content:center;padding:16px}
   .mbox{background:var(--card);color:var(--text);border-radius:14px;width:100%;max-width:430px;max-height:84vh;display:flex;flex-direction:column;overflow:hidden}
@@ -292,6 +293,7 @@ const MAX_FREE_MEDIA_CHARS = 240000;
 const MAX_FREE_VOICE_SEC = 12;
 const AI_BOT_ID = 'amar_ai_bot';
 const AI_BOT_NAME = 'Amar AI';
+const APP_CREATOR = 'Park Kenzo';
 
 const $app = document.getElementById('app');
 
@@ -509,10 +511,18 @@ function saveAiHistory(uid, arr) {
   try { localStorage.setItem(`amar_ai_hist_${uid || 'guest'}`, JSON.stringify(arr.slice(-50))); } catch (e) {}
 }
 
+function isCreatorQuery(q) {
+  return /(who (created|made|built|owns|developed) you|your creator|your owner|tumar creator|tomar creator|toke ke banaise|tomake ke banaise|ke banaise|ke toiri korse|owner ke|creator ke|malik ke|tumar malik|tomar malik|tumi kar)/i.test(q);
+}
+
 function generateFreeAiReply(userText, userName) {
   const raw = String(userText || '').trim();
   const q = raw.toLowerCase();
   const firstName = (userName || 'Friend').split(' ')[0];
+
+  if (isCreatorQuery(q)) {
+    return `👑 Amar creator holo **${APP_CREATOR}**.`;
+  }
 
   const mathMatch = raw.replace(/×/g, '*').replace(/÷/g, '/').match(/^[\d\s+\-*/().%^]+$/);
   if (mathMatch && /\d/.test(raw) && /[+\-*/%^]/.test(raw)) {
@@ -523,7 +533,8 @@ function generateFreeAiReply(userText, userName) {
   }
   if (/\b(koyta baje|ekhon somoy|what time|time now)\b/.test(q)) return `🕒 Ekhon somoy: **${new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}**.`;
   if (/\b(aj koto tarikh|aj ki bar|today'?s date|what date|what day)\b/.test(q)) return `📅 Ajke: **${new Date().toLocaleDateString(undefined, { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}**.`;
-  if (/^(hi|hello|hey|salam|assalamu|aoa|yo|oi|kemon acho|ki obosta|hlw)\b/i.test(q)) return `👋 Hello ${firstName}! Ami **Amar AI**, Amar Chat-er built-in assistant. Kemon acho? Ami summary, translation, math, caption, ba online search diye sahajjo korte pari!`;
+  if (/^(hi|hello|hey|salam|assalamu|aoa|yo|oi|kemon acho|ki obosta|hlw)\b/i.test(q)) return `👋 Hello ${firstName}! Ami **Amar AI** (created by **${APP_CREATOR}**), Amar Chat-er built-in assistant. Kemon acho? Ami summary, translation, math, caption, ba online search diye sahajjo korte pari!`;
+  if (/(who are you|tumi ke|tomar nam|ki korte paro|help|features)/i.test(q)) return `🤖 Ami **Amar AI**, created by **${APP_CREATOR}**. Ami math, summary, translation, caption, ar online search diye tomake sahajjo korte pari!`;
   if (/(caption|post|status|bio|likhe dao|write|message likh|promo|offer|shop)/i.test(q)) return `✍️ **Idea for you:**\n1. "Fresh vibe, clean look — ✨"\n2. "Fast & reliable service every single day! 💯"\n3. "Notun kichu shuru korar sera somoy ekhoni 🚀"`;
   if (/(tip|tips|advice|motivation|porashona|study|focus|bored|ekgheye)/i.test(q)) return `💡 **Quick Tip:** Ekta boro kajke chhoto chhoto 15-20 minute er step e vag kore nao. Age ektu shuru koro—shuru korlei momentum chole asbe!`;
   if (/(joke|hasir|koutuk|funny|bore)/i.test(q)) return `😄 Ek bondhu arek bondhuke bolche: "Bhai, amar phone ta boro smart!" Arekjon: "Keno?" Bondhu: "Ami 'chhuti' likhte giye 'chhobi' likhsi, ta-o bujhe nise!"`;
@@ -623,7 +634,7 @@ async function superAiReply(userText, userName) {
   const q = raw.toLowerCase();
   const fallback = generateFreeAiReply(raw, userName);
   const isPureMath = /^[\d\s+\-*/().%^×÷]+$/.test(raw) && /\d/.test(raw) && /[+\-*/%^×÷]/.test(raw);
-  const isMetaChat = isPureMath || /\b(koyta baje|ekhon somoy|what time|time now|aj koto tarikh|aj ki bar|today'?s date|what date|what day)\b/.test(q) || /^(hi|hello|hey|salam|assalamu|aoa|yo|oi|kemon acho|ki obosta|hlw)[!.?\s]*$/i.test(q) || /(who are you|tumi ke|tomar nam|ki korte paro|help|features|joke|hasir|koutuk|funny|bore)/i.test(q);
+  const isMetaChat = isCreatorQuery(q) || isPureMath || /\b(koyta baje|ekhon somoy|what time|time now|aj koto tarikh|aj ki bar|today'?s date|what date|what day)\b/.test(q) || /^(hi|hello|hey|salam|assalamu|aoa|yo|oi|kemon acho|ki obosta|hlw)[!.?\s]*$/i.test(q) || /(who are you|tumi ke|tomar nam|ki korte paro|help|features|joke|hasir|koutuk|funny|bore)/i.test(q);
   if (isMetaChat) return fallback;
   if (typeof navigator === 'undefined' || navigator.onLine) {
     const found = await fetchOnlineKnowledge(raw);
@@ -855,7 +866,6 @@ function pinLockView(onSuccess) {
 async function flushOutboxAndScheduled() {
   if (!me || !navigator.onLine) return;
 
-  // 1. Offline outbox
   const queue = getOutbox();
   if (queue.length) {
     const rem = [];
@@ -869,7 +879,6 @@ async function flushOutboxAndScheduled() {
     saveOutbox(rem);
   }
 
-  // 2. Scheduled messages due now
   const now = Date.now();
   const sched = getScheduled();
   if (sched.length) {
@@ -1473,7 +1482,7 @@ function usernameSetup(err = '') {
   };
 }
 
-/* ---------- PROFILE & SETTINGS (WITH BIOMETRIC + AUTO-LOCK) ---------- */
+/* ---------- PROFILE & SETTINGS (WITH BIOMETRIC + AUTO-LOCK + APP CREDIT) ---------- */
 function profileView() {
   stop(); currentScreenName = 'profile'; pushSubScreenHistory('profile'); applyTheme();
   let newPhoto = profile.photo || '';
@@ -1548,6 +1557,8 @@ function profileView() {
         <p class="hint">${esc(tr('delHint'))}</p>
         <button class="btn danger" id="delacc">${esc(tr('delBtn'))}</button>
       </div>
+
+      <div class="appcredit">App Credit: ${esc(APP_CREATOR)}</div>
     </div>`;
 
   document.getElementById('bk').onclick = () => home('chats', false);
@@ -1796,7 +1807,7 @@ function otherUid(c) {
   return (c.members || []).find(id => id !== me.uid) || null;
 }
 
-/* ---------- HOME (WITH MESSAGE REQUESTS FILTER + OUTBOX/SCHEDULED INFO) ---------- */
+/* ---------- HOME ---------- */
 function home(activeTab = 'chats', showArchived = false, showRequests = false) {
   stop(); currentScreenName = 'home'; ensureRootHistoryAnchor(); applyTheme();
   let allChats = [], statusDocs = [], callLogs = [], searchTerm = '';
@@ -1861,7 +1872,6 @@ function home(activeTab = 'chats', showArchived = false, showRequests = false) {
     const oid = otherUid(c);
     if (!oid || c.lastSender === me.uid) return false;
     if (c.acceptedBy?.[me.uid]) return false;
-    // Already existing established chat with same peer is not a new request
     const hasPrior = allChats.some(other => other.id !== c.id && !other.isGroup && (other.members || []).includes(oid) && (other.acceptedBy?.[me.uid] || other.lastSender === me.uid));
     return !hasPrior && !!c.lastMessage;
   };
@@ -2346,7 +2356,7 @@ async function prepareFreeMedia(blobOrDataUrl, kind) {
   return dataUrl;
 }
 
-/* ---------- CHAT VIEW (WITH PAGINATION, GALLERY, NICKNAME, POLLS, MENTIONS, VOICE-TO-TEXT, SCHEDULE, SUMMARY, SMART REPLIES, TRANSLATE, OUTBOX) ---------- */
+/* ---------- CHAT VIEW ---------- */
 function chatView(chatId, title, peerUid = null) {
   stop();
   const isAiChat = (peerUid === AI_BOT_ID) || String(chatId).startsWith('ai_');
@@ -2360,7 +2370,7 @@ function chatView(chatId, title, peerUid = null) {
 
   let aiMessages = isAiChat ? getAiHistory(me?.uid) : [];
   if (isAiChat && !aiMessages.length) {
-    aiMessages = [{ id: 'ai_welcome', senderId: AI_BOT_ID, senderName: AI_BOT_NAME, text: `👋 Hello ${myName().split(' ')[0]}! Ami **Amar AI**. Summary, translation, search, ba jekono kichu jiggesh koro!`, createdAtMs: Date.now() }];
+    aiMessages = [{ id: 'ai_welcome', senderId: AI_BOT_ID, senderName: AI_BOT_NAME, text: `👋 Hello ${myName().split(' ')[0]}! Ami **Amar AI** (created by **${APP_CREATOR}**). Summary, translation, search, ba jekono kichu jiggesh koro!`, createdAtMs: Date.now() }];
     saveAiHistory(me?.uid, aiMessages);
   }
 
@@ -3005,9 +3015,10 @@ function chatView(chatId, title, peerUid = null) {
       aiMessages.push(userMsg); saveAiHistory(me?.uid, aiMessages); renderMessages();
       typingNames = [AI_BOT_NAME]; updateHeaderSub();
       try {
-        const answer = (typeof window.amarAiGenerate === 'function')
+        const localReply = isCreatorQuery(text) ? generateFreeAiReply(text, myName()) : null;
+        const answer = localReply || ((typeof window.amarAiGenerate === 'function')
           ? await window.amarAiGenerate(aiMessages.filter(m => m.senderId === me.uid || m.senderId === AI_BOT_ID).slice(-17).map(m => ({ role: m.senderId === AI_BOT_ID ? 'model' : 'user', text: m.text || '' })), text, myName())
-          : await superAiReply(text, myName());
+          : await superAiReply(text, myName()));
         aiMessages.push({ id: 'b_' + Date.now() + '_' + Math.random().toString(36).slice(2, 6), senderId: AI_BOT_ID, senderName: AI_BOT_NAME, text: answer || 'Could not generate reply.', createdAtMs: Date.now() });
         saveAiHistory(me?.uid, aiMessages);
       } catch (aiError) {
@@ -3048,7 +3059,6 @@ function chatView(chatId, title, peerUid = null) {
     catch (e) { throw new Error(e.code === 'permission-denied' ? 'Message pathano gelo na (permission nei / block)' : e.message); }
   }
 
-  // Voice-to-Text (Speech Recognition)
   const sttBtn = document.getElementById('sttbtn');
   if (sttBtn) {
     sttBtn.onclick = () => {
@@ -3071,7 +3081,6 @@ function chatView(chatId, title, peerUid = null) {
     };
   }
 
-  // Schedule Message button
   const schedBtn = document.getElementById('schedbtn');
   if (schedBtn) {
     schedBtn.onclick = () => {
