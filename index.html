@@ -10,6 +10,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="mobile-web-app-capable" content="yes">
 <title>Amar Chat</title>
+<meta name="application-name" content="Amar Chat">
 <style>
   :root{
     --g:#0f766e;
@@ -85,7 +86,7 @@
   .empty{padding:44px 20px;text-align:center;color:var(--sub);font-size:14px}
   .fab{position:absolute;right:18px;bottom:18px;width:56px;height:56px;border-radius:50%;background:linear-gradient(135deg,var(--g),var(--gl));color:#fff;border:0;font-size:28px;box-shadow:0 6px 18px #0003;cursor:pointer;z-index:12;transition:transform .15s}
   .fab:active{transform:scale(.95)}
-  .menu{position:absolute;right:16px;bottom:86px;background:var(--card);color:var(--text);border-radius:14px;box-shadow:0 10px 28px #0003;border:1px solid var(--bd);overflow:hidden;z-index:30;min-width:235px}
+  .menu{position:absolute;right:16px;bottom:86px;background:var(--card);color:var(--text);border-radius:14px;box-shadow:0 10px 28px #0003;border:1px solid var(--bd);overflow:hidden;z-index:30;min-width:235px;max-height:76vh;overflow-y:auto}
   .menu.top{bottom:auto;top:54px;right:10px}
   .menu div{padding:12px 16px;cursor:pointer;font-size:14px;border-bottom:1px solid var(--bd);display:flex;align-items:center;gap:8px}
   .menu div:last-child{border-bottom:0}
@@ -128,7 +129,7 @@
   .b .trbox{flex-basis:100%;margin-top:4px;padding:6px 8px;border-left:3px solid #10b981;background:#10b98114;border-radius:6px;font-size:12.5px}
   .b .pollbox{flex-basis:100%;margin-top:4px;background:#0000000d;border-radius:8px;padding:8px}
   body.dark .b .pollbox{background:#ffffff10}
-  .pollopt{display:flex;align-items:center;justify-content:space-between;gap:8px;padding:6px 9px;border-radius:7px;background:var(--card);border:1px solid var(--bd);margin-top:5px;cursor:pointer;font-size:13px}
+  .pollopt{display:flex;align-items:center;justify-content:space-between;gap:8px;padding:6px 9px;border-radius:7px;background:var(--card);border:1px solid var(--bd);margin-top:5px;cursor:pointer;font-size:13px;position:relative;overflow:hidden}
   .pollopt.voted{border-color:var(--g);background:var(--chip);color:var(--chipt);font-weight:700}
   .b .lprev{flex-basis:100%;margin-top:4px;padding:6px 8px;border-left:3px solid #0284c7;background:#8882;border-radius:6px;font-size:12px}
   .b .lprev b{display:block;font-size:11.5px;color:var(--g)}
@@ -185,7 +186,6 @@
   .swatch.on{outline:3px solid var(--g)}
   .medgrid{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}
   .medgrid img{width:100%;aspect-ratio:1/1;object-fit:cover;border-radius:8px;cursor:pointer}
-  .appcredit{text-align:center;color:var(--sub);font-size:12.5px;font-weight:600;padding:8px 0 22px}
 
   .modal{position:fixed;inset:0;background:#0008;z-index:120;display:flex;align-items:center;justify-content:center;padding:16px}
   .mbox{background:var(--card);color:var(--text);border-radius:14px;width:100%;max-width:430px;max-height:84vh;display:flex;flex-direction:column;overflow:hidden}
@@ -196,7 +196,7 @@
   .cambox video{width:100%;height:100%;object-fit:cover}
   .lbox{position:fixed;inset:0;background:#000e;z-index:150;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:16px}
   .lbox img{max-width:100%;max-height:65vh;border-radius:8px;object-fit:contain}
-  .lbox .sttxt{color:#fff;font-size:24px;font-weight:700;padding:24px;text-align:center;max-width:520px}
+  .lbox .sttxt{color:#fff;font-size:24px;font-weight:700;padding:24px;text-align:center;max-width:520px;white-space:pre-wrap;overflow-y:auto;max-height:70vh}
   .lbox .lcap{color:#fff;margin-top:10px;font-size:14px;text-align:center}
   .lbox .viewers{margin-top:12px;background:#ffffff1a;color:#fff;padding:10px 14px;border-radius:10px;font-size:13px;max-width:420px;width:100%}
   .lbox .streply{margin-top:12px;display:flex;gap:8px;max-width:420px;width:100%}
@@ -293,7 +293,6 @@ const MAX_FREE_MEDIA_CHARS = 240000;
 const MAX_FREE_VOICE_SEC = 12;
 const AI_BOT_ID = 'amar_ai_bot';
 const AI_BOT_NAME = 'Amar AI';
-const APP_CREATOR = 'Park Kenzo';
 
 const $app = document.getElementById('app');
 
@@ -358,7 +357,10 @@ const I18N = {
     pwBtn: 'Password Update Korun', delCard: '⚠️ Account Delete', delHint: 'Account permanently delete korle ar fire pawa jabe na.',
     delBtn: 'Account Delete Korun', copyBtn: 'Copy', copied: 'Copy hoyeche', seenBy: 'Seen by',
     replyBtn: 'Reply', forwardBtn: 'Forward', editBtn: 'Edit', deleteBtn: 'Delete', starBtn: 'Star',
-    unstarBtn: 'Unstar', pinBtn: 'Pin', unpinBtn: 'Unpin', selectBtn: 'Select'
+    unstarBtn: 'Unstar', pinBtn: 'Pin', unpinBtn: 'Unpin', selectBtn: 'Select',
+    creditsCard: '🏆 App Credits', creditsText: 'App Credits: Park Kenzo',
+    moodLabel: 'Mood / Current Status', phoneLabel: 'Phone Number (Optional)', socialLabel: 'Social / Website Link (Optional)',
+    previewProfileBtn: '👁 Amar Public Profile Dekhun', removePhotoBtn: 'Photo Remove'
   },
   bn: {
     appName: 'আমার চ্যাট', logout: 'লগআউট', chatsTab: '💬 চ্যাট', statusTab: '🟢 স্ট্যাটাস', callsTab: '📞 কল',
@@ -375,14 +377,17 @@ const I18N = {
     aboutLabel: 'পরিচিতি', langLabel: 'অ্যাপের ভাষা', langBanglish: 'Banglish', langBn: 'শুদ্ধ বাংলা',
     langEn: 'English', saveBtn: 'সংরক্ষণ করুন', unCard: '🆔 ইউজারনেম পরিবর্তন', unPh: 'নতুন ইউজারনেম (a-z, 0-9, _)',
     unBtn: 'ইউজারনেম আপডেট করুন', emCard: '✉️ ইমেইল পরিবর্তন', emPh: 'নতুন ইমেইল ঠিকানা', emPwPh: 'বর্তমান পাসওয়ার্ড',
-    emBtn: 'ইমেইল আপডেট করুন', sndCard: '🔔 রিংটোন ও সাউন্ড', ringToggle: 'রিংটোন ও নোটিফিকেশন সাউন্ড',
+    emBtn: 'ইউজারনেম/ইমেইল আপডেট করুন', sndCard: '🔔 রিংটোন ও সাউন্ড', ringToggle: 'রিংটোন ও নোটিফিকেশন সাউন্ড',
     darkToggle: '🌙 ডার্ক মোড', lseenToggle: 'অনলাইন ও সর্বশেষ দেখা দেখান', receiptToggle: 'রিড রিসিপ্ট (✓✓ Seen) পাঠান',
     pinLabel: 'অ্যাপ লক পিন (খালি রাখলে বন্ধ)', blkCard: '🚫 ব্লক তালিকা', noBlk: 'কেউ ব্লক করা নেই।',
     unblkBtn: 'আনব্লক', pwCard: '🔑 পাসওয়ার্ড পরিবর্তন', pwPh: 'নতুন পাসওয়ার্ড (কমপক্ষে ৬ অক্ষর)',
     pwBtn: 'পাসওয়ার্ড আপডেট করুন', delCard: '⚠️ অ্যাকাউন্ট মুছুন', delHint: 'অ্যাকাউন্ট স্থায়ীভাবে মুছে ফেললে আর ফেরত পাওয়া যাবে না।',
     delBtn: 'অ্যাকাউন্ট মুছে ফেলুন', copyBtn: 'কপি', copied: 'কপি করা হয়েছে', seenBy: 'দেখেছেন',
     replyBtn: 'উত্তর', forwardBtn: 'ফরওয়ার্ড', editBtn: 'সম্পাদনা', deleteBtn: 'মুছুন', starBtn: 'তারকা দিন',
-    unstarBtn: 'তারকা সরান', pinBtn: 'পিন করুন', unpinBtn: 'আনপিন', selectBtn: 'নির্বাচন'
+    unstarBtn: 'তারকা সরান', pinBtn: 'পিন করুন', unpinBtn: 'আনপিন', selectBtn: 'নির্বাচন',
+    creditsCard: '🏆 অ্যাপ ক্রেডিটস', creditsText: 'App Credits: Park Kenzo',
+    moodLabel: 'মুড / বর্তমান অবস্থা', phoneLabel: 'ফোন নম্বর (ঐচ্ছিক)', socialLabel: 'সোশ্যাল / ওয়েবসাইট লিংক (ঐচ্ছিক)',
+    previewProfileBtn: '👁 আমার পাবলিক প্রোফাইল দেখুন', removePhotoBtn: 'ছবি সরান'
   },
   en: {
     appName: 'Amar Chat', logout: 'Logout', chatsTab: '💬 Chats', statusTab: '🟢 Status', callsTab: '📞 Calls',
@@ -406,7 +411,10 @@ const I18N = {
     pwBtn: 'Update Password', delCard: '⚠️ Delete Account', delHint: 'Deleting your account permanently cannot be undone.',
     delBtn: 'Delete Account', copyBtn: 'Copy', copied: 'Copied', seenBy: 'Seen by',
     replyBtn: 'Reply', forwardBtn: 'Forward', editBtn: 'Edit', deleteBtn: 'Delete', starBtn: 'Star',
-    unstarBtn: 'Unstar', pinBtn: 'Pin', unpinBtn: 'Unpin', selectBtn: 'Select'
+    unstarBtn: 'Unstar', pinBtn: 'Pin', unpinBtn: 'Unpin', selectBtn: 'Select',
+    creditsCard: '🏆 App Credits', creditsText: 'App Credits: Park Kenzo',
+    moodLabel: 'Mood / Status', phoneLabel: 'Phone (Optional)', socialLabel: 'Social / Website Link (Optional)',
+    previewProfileBtn: '👁 Preview My Public Profile', removePhotoBtn: 'Remove Photo'
   }
 };
 
@@ -467,8 +475,12 @@ const isSoundEnabled = () => profile?.soundEnabled !== false;
 const UN_RE = /^[a-z0-9_]{3,20}$/;
 const normUn = s => String(s || '').trim().toLowerCase().replace(/^@/, '');
 const UN_HELP = 'Username: 3-20 chars (a-z, 0-9, _).';
-const MEDIA_OK = /^(data:(image|audio)\/[a-z0-9.+-]+(;[^;,]+)*;base64,|https:\/\/firebasestorage\.googleapis\.com\/)/i;
-const safeMedia = u => (typeof u === 'string' && MEDIA_OK.test(u)) ? u : '';
+const MEDIA_OK = /^(data:(image|audio)\/[a-z0-9.+-]+(;[^;,]+)*;base64,|https:\/\/[^\s"'<>]+)$/i;
+const safeMedia = u => {
+  if (typeof u !== 'string') return '';
+  const trimmed = u.trim();
+  return MEDIA_OK.test(trimmed) ? trimmed : '';
+};
 const isOnline = p => !!(p && p.online && p.lastSeen && p.lastSeen.toMillis && (Date.now() - p.lastSeen.toMillis() < 150000));
 const tsMs = ts => ts && ts.toMillis ? ts.toMillis() : (typeof ts === 'number' ? ts : 0);
 const isTyping = v => typeof v === 'number' && v > 0 && Math.abs(Date.now() - v) < 8000;
@@ -511,8 +523,20 @@ function saveAiHistory(uid, arr) {
   try { localStorage.setItem(`amar_ai_hist_${uid || 'guest'}`, JSON.stringify(arr.slice(-50))); } catch (e) {}
 }
 
-function isCreatorQuery(q) {
-  return /(who (created|made|built|owns|developed) you|your creator|your owner|tumar creator|tomar creator|toke ke banaise|tomake ke banaise|ke banaise|ke toiri korse|owner ke|creator ke|malik ke|tumar malik|tomar malik|tumi kar)/i.test(q);
+const APP_OWNER_QUERY_RE = /(owner|malik|founder|creator|developer|dev|admin|maker|author|banaiyse|baniyeche|banalo|banaisen|toiri|made this|created this|built this|who made|who created|who built|who owns|kar app|kader app|park\s*kenzo|kenzo)/i;
+
+function isOwnerQuestion(rawText) {
+  const q = String(rawText || '').trim();
+  if (!q) return false;
+  if (/park\s*kenzo/i.test(q)) return true;
+  if (APP_OWNER_QUERY_RE.test(q) && /(app|amar\s*chat|chat|ei|this|system|bot|ai|software|site|website|ke|who|kar|malik|owner|founder|creator|developer|made|created|built|banaiyse|baniyeche|toiri)/i.test(q)) {
+    return true;
+  }
+  return /^(owner|malik|founder|creator|developer|admin)\s*(ke|who|\?)?$/i.test(q);
+}
+
+function getOwnerAnswer() {
+  return `👑 **Amar Chat**-er owner ebong creator holen **Park Kenzo**!`;
 }
 
 function generateFreeAiReply(userText, userName) {
@@ -520,9 +544,7 @@ function generateFreeAiReply(userText, userName) {
   const q = raw.toLowerCase();
   const firstName = (userName || 'Friend').split(' ')[0];
 
-  if (isCreatorQuery(q)) {
-    return `👑 Amar creator holo **${APP_CREATOR}**.`;
-  }
+  if (isOwnerQuestion(raw)) return getOwnerAnswer();
 
   const mathMatch = raw.replace(/×/g, '*').replace(/÷/g, '/').match(/^[\d\s+\-*/().%^]+$/);
   if (mathMatch && /\d/.test(raw) && /[+\-*/%^]/.test(raw)) {
@@ -533,8 +555,7 @@ function generateFreeAiReply(userText, userName) {
   }
   if (/\b(koyta baje|ekhon somoy|what time|time now)\b/.test(q)) return `🕒 Ekhon somoy: **${new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}**.`;
   if (/\b(aj koto tarikh|aj ki bar|today'?s date|what date|what day)\b/.test(q)) return `📅 Ajke: **${new Date().toLocaleDateString(undefined, { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}**.`;
-  if (/^(hi|hello|hey|salam|assalamu|aoa|yo|oi|kemon acho|ki obosta|hlw)\b/i.test(q)) return `👋 Hello ${firstName}! Ami **Amar AI** (created by **${APP_CREATOR}**), Amar Chat-er built-in assistant. Kemon acho? Ami summary, translation, math, caption, ba online search diye sahajjo korte pari!`;
-  if (/(who are you|tumi ke|tomar nam|ki korte paro|help|features)/i.test(q)) return `🤖 Ami **Amar AI**, created by **${APP_CREATOR}**. Ami math, summary, translation, caption, ar online search diye tomake sahajjo korte pari!`;
+  if (/^(hi|hello|hey|salam|assalamu|aoa|yo|oi|kemon acho|ki obosta|hlw)\b/i.test(q)) return `👋 Hello ${firstName}! Ami **Amar AI**, Amar Chat-er built-in assistant. Kemon acho? Ami summary, translation, math, caption, ba online search diye sahajjo korte pari!`;
   if (/(caption|post|status|bio|likhe dao|write|message likh|promo|offer|shop)/i.test(q)) return `✍️ **Idea for you:**\n1. "Fresh vibe, clean look — ✨"\n2. "Fast & reliable service every single day! 💯"\n3. "Notun kichu shuru korar sera somoy ekhoni 🚀"`;
   if (/(tip|tips|advice|motivation|porashona|study|focus|bored|ekgheye)/i.test(q)) return `💡 **Quick Tip:** Ekta boro kajke chhoto chhoto 15-20 minute er step e vag kore nao. Age ektu shuru koro—shuru korlei momentum chole asbe!`;
   if (/(joke|hasir|koutuk|funny|bore)/i.test(q)) return `😄 Ek bondhu arek bondhuke bolche: "Bhai, amar phone ta boro smart!" Arekjon: "Keno?" Bondhu: "Ami 'chhuti' likhte giye 'chhobi' likhsi, ta-o bujhe nise!"`;
@@ -631,10 +652,11 @@ async function fetchOnlineKnowledge(rawQuery) {
 
 async function superAiReply(userText, userName) {
   const raw = String(userText || '').trim();
+  if (isOwnerQuestion(raw)) return getOwnerAnswer();
   const q = raw.toLowerCase();
   const fallback = generateFreeAiReply(raw, userName);
   const isPureMath = /^[\d\s+\-*/().%^×÷]+$/.test(raw) && /\d/.test(raw) && /[+\-*/%^×÷]/.test(raw);
-  const isMetaChat = isCreatorQuery(q) || isPureMath || /\b(koyta baje|ekhon somoy|what time|time now|aj koto tarikh|aj ki bar|today'?s date|what date|what day)\b/.test(q) || /^(hi|hello|hey|salam|assalamu|aoa|yo|oi|kemon acho|ki obosta|hlw)[!.?\s]*$/i.test(q) || /(who are you|tumi ke|tomar nam|ki korte paro|help|features|joke|hasir|koutuk|funny|bore)/i.test(q);
+  const isMetaChat = isPureMath || /\b(koyta baje|ekhon somoy|what time|time now|aj koto tarikh|aj ki bar|today'?s date|what date|what day)\b/.test(q) || /^(hi|hello|hey|salam|assalamu|aoa|yo|oi|kemon acho|ki obosta|hlw)[!.?\s]*$/i.test(q) || /(who are you|tumi ke|tomar nam|ki korte paro|help|features|joke|hasir|koutuk|funny|bore)/i.test(q);
   if (isMetaChat) return fallback;
   if (typeof navigator === 'undefined' || navigator.onLine) {
     const found = await fetchOnlineKnowledge(raw);
@@ -811,9 +833,10 @@ async function verifyBiometricLock() {
 function resetAutoLockTimer() {
   clearTimeout(autoLockTimer);
   const mins = parseInt(localStorage.getItem(autoLockKey()) || '0', 10);
-  if (!mins || !me || !localStorage.getItem(pinKey())) return;
+  const hasLock = !!(localStorage.getItem(pinKey()) || localStorage.getItem(bioCredKey()));
+  if (!mins || !me || !hasLock) return;
   autoLockTimer = setTimeout(() => {
-    if (me && localStorage.getItem(pinKey()) && currentScreenName !== 'pin') {
+    if (me && hasLock && currentScreenName !== 'pin') {
       appUnlocked = false;
       pinLockView(() => home('chats', false));
     }
@@ -828,30 +851,34 @@ function pinLockView(onSuccess) {
   stop();
   currentScreenName = 'pin';
   applyTheme();
+  const hasPin = !!localStorage.getItem(pinKey());
   const hasBio = !!localStorage.getItem(bioCredKey());
   $app.innerHTML = `
     <div class="auth">
       <h1>🔐 Chat Lock</h1>
-      <p class="hint" style="text-align:center">Enter your 4-6 digit PIN${hasBio ? ' or use Fingerprint/Biometric' : ''}.</p>
-      <input type="password" id="pinin" placeholder="PIN" maxlength="6" inputmode="numeric">
+      <p class="hint" style="text-align:center">${hasPin ? `Enter your 4-6 digit PIN${hasBio ? ' or use Fingerprint/Biometric' : ''}.` : 'Verify with Fingerprint / Biometric to unlock.'}</p>
+      ${hasPin ? '<input type="password" id="pinin" placeholder="PIN" maxlength="6" inputmode="numeric">' : ''}
       <p class="err" id="pinerr"></p>
-      <button class="btn" id="pinok">Unlock</button>
-      ${hasBio ? '<button class="btn sec" id="biounlock" style="margin-top:10px">👆 Unlock with Fingerprint / Biometric</button>' : ''}
+      ${hasPin ? '<button class="btn" id="pinok">Unlock</button>' : ''}
+      ${hasBio ? `<button class="btn ${hasPin ? 'sec' : ''}" id="biounlock" style="${hasPin ? 'margin-top:10px' : ''}">👆 Unlock with Fingerprint / Biometric</button>` : ''}
       <button class="link" id="pinlo">${esc(tr('logout'))}</button>
     </div>`;
-  document.getElementById('pinlo').onclick = () => { localStorage.removeItem(pinKey()); auth.signOut(); };
-  const check = () => {
-    const val = document.getElementById('pinin').value.trim();
-    if (val === String(localStorage.getItem(pinKey()) || '')) {
-      appUnlocked = true;
-      resetAutoLockTimer();
-      onSuccess();
-    } else {
-      document.getElementById('pinerr').textContent = 'Invalid PIN.';
-    }
-  };
-  document.getElementById('pinok').onclick = check;
-  document.getElementById('pinin').addEventListener('keydown', e => { if (e.key === 'Enter') check(); });
+  document.getElementById('pinlo').onclick = () => { localStorage.removeItem(pinKey()); localStorage.removeItem(bioCredKey()); auth.signOut(); };
+  const pinok = document.getElementById('pinok');
+  if (pinok) {
+    const check = () => {
+      const val = document.getElementById('pinin').value.trim();
+      if (val === String(localStorage.getItem(pinKey()) || '')) {
+        appUnlocked = true;
+        resetAutoLockTimer();
+        onSuccess();
+      } else {
+        document.getElementById('pinerr').textContent = 'Invalid PIN.';
+      }
+    };
+    pinok.onclick = check;
+    document.getElementById('pinin').addEventListener('keydown', e => { if (e.key === 'Enter') check(); });
+  }
   const bioBtn = document.getElementById('biounlock');
   if (bioBtn) {
     bioBtn.onclick = async () => {
@@ -886,7 +913,7 @@ async function flushOutboxAndScheduled() {
     for (const s of sched) {
       if ((s.sendAt || 0) <= now) {
         try {
-          await directSendToFirestore(s.chatId, { text: s.text || null, image: s.image || null, audio: s.audio || null, audioMime: s.audioMime || null }, s.chatMetaSnapshot || {});
+          await directSendToFirestore(s.chatId, { text: s.text || null, image: s.image || null, audio: s.audio || null, audioMime: s.audioMime || null, poll: s.poll || null }, s.chatMetaSnapshot || {});
           toast('⏰ Scheduled message sent!');
         } catch (e) {
           stillWaiting.push(s);
@@ -926,7 +953,7 @@ async function directSendToFirestore(targetChatId, payload, fallbackMeta = {}) {
 function startBackgroundQueues() {
   clearInterval(scheduleRunnerTimer);
   flushOutboxAndScheduled();
-  scheduleRunnerTimer = setInterval(flushOutboxAndScheduled, 8000);
+  scheduleRunnerTimer = setInterval(flushOutboxAndScheduled, 5000);
 }
 
 /* ---------- RINGTONE & NOTIFICATION SOUND ---------- */
@@ -1392,7 +1419,8 @@ async function route() {
       startBackgroundQueues();
       resetAutoLockTimer();
       profile.pinCode = localStorage.getItem(pinKey()) || '';
-      if (profile.pinCode && !appUnlocked) pinLockView(() => home('chats', false));
+      const hasBio = !!localStorage.getItem(bioCredKey());
+      if ((profile.pinCode || hasBio) && !appUnlocked) pinLockView(() => home('chats', false));
       else home('chats', false);
     } else {
       usernameSetup();
@@ -1405,8 +1433,10 @@ async function route() {
 async function claimUsername(username, name) {
   const baseDoc = {
     uid: me.uid, name, nickname: name, username,
-    about: 'Hey there! I am using Amar Chat.', photo: '', darkMode: false, soundEnabled: true,
-    lang: currentLang(), privacy: { lastSeen: true, readReceipts: true }
+    about: 'Hey there! I am using Amar Chat.', mood: '🟢 Available', phone: '', socialLink: '',
+    photo: '', darkMode: false, soundEnabled: true,
+    joinedAt: Date.now(),
+    lang: currentLang(), privacy: { lastSeen: true, readReceipts: true, showPhone: false }
   };
   const batch = db.batch();
   batch.set(db.collection('usernames').doc(username), { uid: me.uid, name });
@@ -1482,18 +1512,26 @@ function usernameSetup(err = '') {
   };
 }
 
-/* ---------- PROFILE & SETTINGS (WITH BIOMETRIC + AUTO-LOCK + APP CREDIT) ---------- */
+/* ---------- PROFILE & SETTINGS (WITH BIOMETRIC + AUTO-LOCK) ---------- */
 function profileView() {
   stop(); currentScreenName = 'profile'; pushSubScreenHistory('profile'); applyTheme();
   let newPhoto = profile.photo || '';
   const lsOn = showLastSeenPref(), rrOn = sendReceiptsPref(), darkOn = isDarkMode(), sndOn = isSoundEnabled(), curLang = currentLang();
+  const showPhoneOn = !!profile?.privacy?.showPhone;
   const curAutoLock = localStorage.getItem(autoLockKey()) || '0';
   const bioOn = !!localStorage.getItem(bioCredKey());
+  const MOODS = ['🟢 Available', '💼 Busy', '🎮 Gaming', '📚 Studying', '🌙 Sleeping', '✈️ Traveling', '🎧 Vibing'];
+  const curMood = profile.mood || '🟢 Available';
 
   $app.innerHTML = `
     <header><button id="bk">←</button>${esc(tr('settingsTitle'))}</header>
     <div class="pad">
-      <div class="pav" id="pav">${avHtml(newPhoto, myName())}</div>
+      <div class="pav" id="pav" title="Change Profile Photo">${avHtml(newPhoto, myName())}</div>
+      <div style="display:flex;justify-content:center;gap:8px;margin-bottom:14px;flex-wrap:wrap">
+        <button type="button" class="btn sm sec" id="chgphbtn" style="padding:6px 12px;font-size:12px">📷 Change Photo</button>
+        ${newPhoto ? `<button type="button" class="btn sm sec" id="viewphbtn" style="padding:6px 12px;font-size:12px">🔍 View</button><button type="button" class="btn sm danger" id="remphbtn" style="padding:6px 12px;font-size:12px">${esc(tr('removePhotoBtn'))}</button>` : ''}
+        <button type="button" class="btn sm" id="prevprof" style="padding:6px 12px;font-size:12px">${esc(tr('previewProfileBtn'))}</button>
+      </div>
       <input type="file" id="pfi" accept="image/jpeg,image/png,image/webp" hidden>
 
       <div class="card">
@@ -1501,6 +1539,16 @@ function profileView() {
         <input type="text" id="pnm" value="${esc(myName())}" maxlength="40">
         <label class="hint"><b>${esc(tr('aboutLabel'))}</b></label>
         <input type="text" id="pab" value="${esc(profile.about || '')}" maxlength="160">
+        <label class="hint"><b>✨ ${esc(tr('moodLabel'))}</b></label>
+        <div class="chips" id="moodchips" style="margin:6px 0 10px">
+          ${MOODS.map(m => `<span class="chip ${curMood === m ? 'on' : ''}" data-m="${esc(m)}" style="${curMood === m ? 'outline:2px solid var(--g);font-weight:700' : ''}">${esc(m)}</span>`).join('')}
+        </div>
+        <input type="text" id="pmood" value="${esc(curMood)}" maxlength="40" placeholder="Custom mood...">
+        <label class="hint"><b>📞 ${esc(tr('phoneLabel'))}</b></label>
+        <input type="text" id="pphone" value="${esc(profile.phone || '')}" maxlength="25" placeholder="+8801XXXXXXXXX">
+        <label class="togrow" style="padding-top:0"><span>Show phone number on my public profile</span><input type="checkbox" id="pshowphone" ${showPhoneOn ? 'checked' : ''}></label>
+        <label class="hint"><b>🔗 ${esc(tr('socialLabel'))}</b></label>
+        <input type="text" id="psocial" value="${esc(profile.socialLink || '')}" maxlength="140" placeholder="https://...">
         <label class="hint"><b>🌐 ${esc(tr('langLabel'))}</b></label>
         <select id="plang">
           <option value="banglish" ${curLang === 'banglish' ? 'selected' : ''}>${esc(tr('langBanglish'))}</option>
@@ -1524,7 +1572,10 @@ function profileView() {
           <option value="1" ${curAutoLock === '1' ? 'selected' : ''}>After 1 minute</option>
           <option value="5" ${curAutoLock === '5' ? 'selected' : ''}>After 5 minutes</option>
         </select>
-        <button type="button" class="btn sm sec" id="biobtn" style="width:100%;margin-top:4px">${bioOn ? '✅ Fingerprint / Biometric Active (Re-register)' : '👆 Enable Fingerprint / Biometric Lock'}</button>
+        <div style="display:flex;gap:8px;margin-top:4px">
+          <button type="button" class="btn sm sec" id="biobtn" style="flex:1">${bioOn ? '✅ Fingerprint / Biometric Active' : '👆 Enable Fingerprint / Biometric'}</button>
+          ${bioOn ? '<button type="button" class="btn sm danger" id="biooff">Off</button>' : ''}
+        </div>
       </div>
       <button class="btn" id="psv" style="margin-bottom:14px">${esc(tr('saveBtn'))}</button>
 
@@ -1558,18 +1609,48 @@ function profileView() {
         <button class="btn danger" id="delacc">${esc(tr('delBtn'))}</button>
       </div>
 
-      <div class="appcredit">App Credit: ${esc(APP_CREATOR)}</div>
+      <div class="card" style="text-align:center;background:var(--bar)">
+        <div class="hint" style="margin-bottom:4px"><b>${esc(tr('creditsCard'))}</b></div>
+        <div style="font-weight:700;color:var(--g);font-size:15px">${esc(tr('creditsText'))}</div>
+      </div>
     </div>`;
 
   document.getElementById('bk').onclick = () => home('chats', false);
-  document.getElementById('biobtn').onclick = registerBiometricLock;
+  document.getElementById('biobtn').onclick = async () => { await registerBiometricLock(); profileView(); };
+  const bioOffBtn = document.getElementById('biooff');
+  if (bioOffBtn) bioOffBtn.onclick = () => { localStorage.removeItem(bioCredKey()); toast('Biometric lock turned off'); profileView(); };
   document.getElementById('pdark').onchange = e => document.body.classList.toggle('dark', e.target.checked);
+  document.querySelectorAll('#moodchips .chip').forEach(ch => {
+    ch.onclick = () => {
+      document.getElementById('pmood').value = ch.dataset.m;
+      document.querySelectorAll('#moodchips .chip').forEach(x => { x.style.outline = 'none'; x.style.fontWeight = '500'; });
+      ch.style.outline = '2px solid var(--g)'; ch.style.fontWeight = '700';
+    };
+  });
   document.getElementById('plang').onchange = async e => {
     const nextLang = e.target.value; profile.lang = nextLang; localStorage.setItem('amar_chat_lang', nextLang); applyTheme();
     try { await db.collection('users').doc(me.uid).set({ lang: nextLang }, { merge: true }); } catch (ex) {}
     profileView();
   };
   document.getElementById('pav').onclick = () => document.getElementById('pfi').click();
+  document.getElementById('chgphbtn').onclick = () => document.getElementById('pfi').click();
+  const viewPhBtn = document.getElementById('viewphbtn');
+  if (viewPhBtn) viewPhBtn.onclick = () => openLightbox(newPhoto, myName(), false);
+  const remPhBtn = document.getElementById('remphbtn');
+  if (remPhBtn) remPhBtn.onclick = () => { newPhoto = ''; document.getElementById('pav').innerHTML = avHtml('', myName()); toast('Photo removed (Save to apply)'); };
+  document.getElementById('prevprof').onclick = () => {
+    const previewData = {
+      ...profile,
+      name: document.getElementById('pnm').value.trim() || myName(),
+      about: document.getElementById('pab').value.trim(),
+      mood: document.getElementById('pmood').value.trim(),
+      phone: document.getElementById('pphone').value.trim(),
+      socialLink: document.getElementById('psocial').value.trim(),
+      photo: newPhoto,
+      privacy: { lastSeen: document.getElementById('plseen').checked, readReceipts: document.getElementById('preceipt').checked, showPhone: document.getElementById('pshowphone').checked }
+    };
+    showPublicProfile(me.uid, previewData.name, previewData);
+  };
   document.getElementById('pfi').onchange = async e => {
     const f = e.target.files[0]; if (!f) return;
     try { const small = await shrink(f, 220, 0.45); newPhoto = small.dataUrl; document.getElementById('pav').innerHTML = avHtml(newPhoto, myName()); } catch (ex) { toast('Photo error'); }
@@ -1578,23 +1659,26 @@ function profileView() {
 
   document.getElementById('psv').onclick = async e => {
     const name = document.getElementById('pnm').value.trim(), about = document.getElementById('pab').value.trim(), lang = document.getElementById('plang').value;
+    const mood = document.getElementById('pmood').value.trim(), phone = document.getElementById('pphone').value.trim(), socialLink = document.getElementById('psocial').value.trim();
     const soundEnabled = document.getElementById('psound').checked, darkMode = document.getElementById('pdark').checked;
-    const lastSeen = document.getElementById('plseen').checked, readReceipts = document.getElementById('preceipt').checked;
+    const lastSeen = document.getElementById('plseen').checked, readReceipts = document.getElementById('preceipt').checked, showPhone = document.getElementById('pshowphone').checked;
     const pinCode = document.getElementById('ppin').value.trim(), autoLockMins = document.getElementById('pautolock').value;
     if (!name) return toast('Name required');
     if (pinCode && !/^\d{4,6}$/.test(pinCode)) return toast('PIN must be 4-6 digits');
     e.target.disabled = true;
     try {
       try { await me.updateProfile({ displayName: name }); } catch (authErr) {}
-      const privacy = { lastSeen, readReceipts };
+      const privacy = { lastSeen, readReceipts, showPhone };
+      const joinedAt = profile.joinedAt || Date.now();
       const batch = db.batch();
-      batch.set(db.collection('users').doc(me.uid), { name, nickname: name, about, photo: newPhoto, lang, soundEnabled, privacy, darkMode }, { merge: true });
+      batch.set(db.collection('users').doc(me.uid), { name, nickname: name, about, mood, phone, socialLink, photo: newPhoto, lang, soundEnabled, privacy, darkMode, joinedAt }, { merge: true });
       if (profile.username) batch.set(db.collection('usernames').doc(profile.username), { uid: me.uid, name }, { merge: true });
       await batch.commit();
       db.collection('chats').where('members', 'array-contains', me.uid).limit(100).get().then(snap => {
         snap.docs.forEach(docSnap => docSnap.ref.set({ memberNames: { [me.uid]: name } }, { merge: true }).catch(() => {}));
       }).catch(() => {});
-      Object.assign(profile, { name, nickname: name, about, photo: newPhoto, lang, soundEnabled, privacy, pinCode, darkMode });
+      Object.assign(profile, { name, nickname: name, about, mood, phone, socialLink, photo: newPhoto, lang, soundEnabled, privacy, pinCode, darkMode, joinedAt });
+      userProfilesCache[me.uid] = { ...profile };
       if (pinCode) localStorage.setItem(pinKey(), pinCode); else localStorage.removeItem(pinKey());
       localStorage.setItem(autoLockKey(), autoLockMins);
       setOnline(true); localStorage.setItem('amar_chat_lang', lang); applyTheme(); appUnlocked = true; resetAutoLockTimer();
@@ -1661,7 +1745,7 @@ function profileView() {
       del.delete(privRef()); del.delete(db.collection('presence').doc(me.uid));
       if (profile.username) del.delete(db.collection('usernames').doc(profile.username));
       del.delete(db.collection('users').doc(me.uid));
-      await del.commit(); localStorage.removeItem(pinKey()); await me.delete();
+      await del.commit(); localStorage.removeItem(pinKey()); localStorage.removeItem(bioCredKey()); await me.delete();
     } catch (ex) { toast(ex.message); }
   };
 }
@@ -1688,28 +1772,95 @@ function starredView() {
   });
 }
 
-async function showPublicProfile(uid, fallbackName = 'User') {
-  if (!uid || uid === AI_BOT_ID || uid === me?.uid) return;
+async function showPublicProfile(uid, fallbackName = 'User', overrideData = null) {
+  if (!uid || uid === AI_BOT_ID) return;
+  const isSelf = uid === me?.uid;
   try {
-    const snap = await db.collection('users').doc(uid).get();
-    if (!snap.exists) return toast('Profile not found');
-    const u = snap.data() || {}; userProfilesCache[uid] = u;
+    let u = overrideData;
+    if (!u) {
+      const snap = await db.collection('users').doc(uid).get();
+      if (!snap.exists) return toast('Profile not found');
+      u = snap.data() || {};
+      userProfilesCache[uid] = u;
+    }
+    let presText = '';
+    if (!isSelf && u.privacy?.lastSeen !== false) {
+      try {
+        const pSnap = await db.collection('presence').doc(uid).get();
+        if (pSnap.exists) presText = fmtStatus(pSnap.data(), true);
+      } catch (e) {}
+    } else if (isSelf) {
+      presText = '🟢 Online (Preview)';
+    }
+
+    let mutualGroups = [];
+    if (!isSelf) {
+      try {
+        const gSnap = await db.collection('chats').where('members', 'array-contains', me.uid).limit(100).get();
+        mutualGroups = gSnap.docs.map(d => d.data()).filter(c => c.isGroup && Array.isArray(c.members) && c.members.includes(uid)).map(c => c.name || 'Group');
+      } catch (e) {}
+    }
+
+    const isBlocked = !isSelf && myBlocked().includes(uid);
+    const safePhoto = safeMedia(u.photo || '');
+    const safeSocial = (typeof u.socialLink === 'string' && /^https?:\/\/[^\s"'<>]+$/i.test(u.socialLink.trim())) ? u.socialLink.trim() : '';
+    const joinedStr = u.joinedAt ? new Date(u.joinedAt).toLocaleDateString(undefined, { month: 'short', year: 'numeric' }) : '';
+
     const modal = document.createElement('div'); modal.className = 'modal';
     modal.innerHTML = `
-      <div class="mbox" style="max-width:390px">
-        <div class="mhead"><span>👤 User Profile</span><button id="pubclose">✕</button></div>
+      <div class="mbox" style="max-width:400px">
+        <div class="mhead"><span>👤 ${isSelf ? 'My Public Profile' : 'User Profile'}</span><button id="pubclose">✕</button></div>
         <div class="mbody" style="text-align:center">
-          <div class="pav" style="margin:4px auto 12px">${avHtml(u.photo || '', u.name || fallbackName)}</div>
+          <div class="pav" id="pubav" style="margin:4px auto 10px" title="${safePhoto ? 'Tap to view full photo' : ''}">${avHtml(safePhoto, u.name || fallbackName)}</div>
           <h2 style="margin:4px 0">${esc(u.name || fallbackName)}</h2>
-          <p class="hint" style="margin:4px 0 10px">@${esc(u.username || 'user')}</p>
-          <p style="white-space:pre-wrap;overflow-wrap:anywhere">${esc(u.about || 'No bio added yet.')}</p>
-          <button class="btn" id="pubmsg">Message</button>
+          <div style="display:flex;align-items:center;justify-content:center;gap:6px;margin:2px 0 8px">
+            <span class="hint" style="margin:0">@${esc(u.username || 'user')}</span>
+            <button type="button" class="btn sm sec" id="pubcopyun" style="padding:2px 8px;font-size:11px">📋 Copy</button>
+          </div>
+          ${presText ? `<div class="hint" style="margin:0 0 6px;color:var(--g);font-weight:600">${esc(presText)}</div>` : ''}
+          ${u.mood ? `<div style="margin:6px 0"><span class="chip" style="cursor:default">${esc(u.mood)}</span></div>` : ''}
+          <div class="card" style="text-align:left;margin-top:10px">
+            <div class="hint" style="margin-bottom:4px"><b>About</b></div>
+            <div style="white-space:pre-wrap;overflow-wrap:anywhere;font-size:14px">${esc(u.about || 'Hey there! I am using Amar Chat.')}</div>
+            ${(u.phone && u.privacy?.showPhone) ? `<div style="margin-top:10px;font-size:13.5px"><b>📞 Phone:</b> <a class="lnk" href="tel:${esc(u.phone)}">${esc(u.phone)}</a></div>` : ''}
+            ${safeSocial ? `<div style="margin-top:8px;font-size:13.5px"><b>🔗 Link:</b> <a class="lnk" href="${esc(safeSocial)}" target="_blank" rel="noopener noreferrer">${esc(safeSocial)}</a></div>` : ''}
+            ${joinedStr ? `<div class="hint" style="margin:8px 0 0;font-size:12px">📅 Joined ${esc(joinedStr)}</div>` : ''}
+          </div>
+          ${!isSelf && mutualGroups.length ? `<div class="card" style="text-align:left"><div class="hint" style="margin-bottom:4px"><b>👥 Mutual Groups (${mutualGroups.length})</b></div><div style="font-size:13px">${mutualGroups.map(g => esc(g)).join(', ')}</div></div>` : ''}
+          ${isSelf ? `<button class="btn" id="pubdone">Close Preview</button>` : `
+            <div style="display:flex;gap:8px;margin-top:8px">
+              <button class="btn" id="pubmsg" style="flex:2">💬 Message</button>
+              <button class="btn sec" id="pubacall" style="flex:1" title="Audio Call">📞</button>
+              <button class="btn sec" id="pubvcall" style="flex:1" title="Video Call">📹</button>
+            </div>
+            <button class="btn sm ${isBlocked ? 'sec' : 'danger'}" id="pubblk" style="width:100%;margin-top:8px">${isBlocked ? '✅ Unblock User' : '🚫 Block User'}</button>
+          `}
         </div>
       </div>`;
     document.body.appendChild(modal);
     modal.querySelector('#pubclose').onclick = () => modal.remove();
     modal.onclick = e => { if (e.target === modal) modal.remove(); };
-    modal.querySelector('#pubmsg').onclick = async () => { modal.remove(); try { await openOneToOne({ uid, name: u.name || fallbackName, username: u.username || '' }); } catch (e) { toast('Could not open chat: ' + e.message); } };
+    if (safePhoto) {
+      modal.querySelector('#pubav').onclick = () => openLightbox(safePhoto, u.name || fallbackName, false);
+    }
+    modal.querySelector('#pubcopyun').onclick = async () => {
+      try { if (navigator.clipboard?.writeText) await navigator.clipboard.writeText('@' + (u.username || '')); } catch (e) {}
+      toast('Username copied');
+    };
+    if (isSelf) {
+      modal.querySelector('#pubdone').onclick = () => modal.remove();
+    } else {
+      modal.querySelector('#pubmsg').onclick = async () => { modal.remove(); try { await openOneToOne({ uid, name: u.name || fallbackName, username: u.username || '' }); } catch (e) { toast('Could not open chat: ' + e.message); } };
+      modal.querySelector('#pubacall').onclick = () => { modal.remove(); startCall(uid, u.name || fallbackName, false); };
+      modal.querySelector('#pubvcall').onclick = () => { modal.remove(); startCall(uid, u.name || fallbackName, true); };
+      modal.querySelector('#pubblk').onclick = async () => {
+        const FV = firebase.firestore.FieldValue;
+        await privRef().set({ blocked: isBlocked ? FV.arrayRemove(uid) : FV.arrayUnion(uid) }, { merge: true });
+        profile.blocked = isBlocked ? myBlocked().filter(x => x !== uid) : [...new Set([...myBlocked(), uid])];
+        toast(isBlocked ? 'User unblocked' : 'User blocked');
+        modal.remove();
+      };
+    }
   } catch (e) { toast('Could not load profile: ' + e.message); }
 }
 
@@ -1768,7 +1919,7 @@ async function openStatusModal() {
         ids.delete(me.uid);
         allowedUids = [...ids].filter(u => !myBlocked().includes(u)).slice(0, 200);
       }
-      await db.collection('statuses').add({ uid: me.uid, userName: myName(), photo: '', text: clean, privacy, allowedUids, viewedBy: [], createdAt: now, expiresAt: now + 24 * 60 * 60 * 1000 });
+      await db.collection('statuses').add({ uid: me.uid, userName: myName(), photo: profile.photo || '', text: clean, privacy, allowedUids, viewedBy: [], createdAt: now, expiresAt: now + 24 * 60 * 60 * 1000 });
       modal.remove(); home('status', false);
     } catch (e) { toast(e.message); }
   };
@@ -1780,6 +1931,7 @@ async function sendStatusReply(statusObj, replyText) {
   const ids = [me.uid, statusObj.uid].sort(), cid = ids.join('_'), FV = firebase.firestore.FieldValue;
   await db.collection('chats').doc(cid).set({
     isGroup: false, members: ids, memberNames: { [me.uid]: myName(), [statusObj.uid]: statusObj.userName || 'User' },
+    acceptedBy: { [me.uid]: true },
     lastMessage: `Status reply: ${clean}`, lastSender: me.uid, unread: { [statusObj.uid]: FV.increment(1) }, updatedAt: FV.serverTimestamp()
   }, { merge: true });
   await db.collection('chats').doc(cid).collection('messages').add({
@@ -1807,7 +1959,33 @@ function otherUid(c) {
   return (c.members || []).find(id => id !== me.uid) || null;
 }
 
-/* ---------- HOME ---------- */
+/* ---------- HOME (WITH MESSAGE REQUESTS FILTER + OUTBOX/SCHEDULED MANAGER) ---------- */
+function openQueueManagerModal(onDone) {
+  const modal = document.createElement('div'); modal.className = 'modal';
+  const renderModal = () => {
+    const ob = getOutbox(), sc = getScheduled();
+    modal.innerHTML = `
+      <div class="mbox">
+        <div class="mhead"><span>⏳ Outbox & Scheduled</span><button id="qmcl">✕</button></div>
+        <div class="mbody">
+          <div class="hint"><b>Pending Offline Outbox (${ob.length})</b></div>
+          ${ob.length ? ob.map((x, i) => `<div class="mrow"><span style="font-size:13px">${esc(x.payload?.text || 'Media')}</span><button class="btn sm danger rmob" data-i="${i}" style="padding:4px 9px;font-size:11px">Cancel</button></div>`).join('') : '<div class="hint">Empty</div>'}
+          <div class="hint" style="margin-top:12px"><b>Scheduled Messages (${sc.length})</b></div>
+          ${sc.length ? sc.map((x, i) => `<div class="mrow"><span style="font-size:13px">${esc(x.text || 'Message')} <span class="hint">(${new Date(x.sendAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })})</span></span><button class="btn sm danger rmsc" data-i="${i}" style="padding:4px 9px;font-size:11px">Cancel</button></div>`).join('') : '<div class="hint">Empty</div>'}
+          ${(ob.length || sc.length) ? '<button class="btn sm" id="qmflush" style="width:100%;margin-top:10px">Send Due / Retry Now</button>' : ''}
+        </div>
+      </div>`;
+    modal.querySelector('#qmcl').onclick = () => { modal.remove(); if (onDone) onDone(); };
+    modal.querySelectorAll('.rmob').forEach(b => b.onclick = () => { const arr = getOutbox(); arr.splice(+b.dataset.i, 1); saveOutbox(arr); renderModal(); });
+    modal.querySelectorAll('.rmsc').forEach(b => b.onclick = () => { const arr = getScheduled(); arr.splice(+b.dataset.i, 1); saveScheduled(arr); renderModal(); });
+    const fl = modal.querySelector('#qmflush');
+    if (fl) fl.onclick = async () => { await flushOutboxAndScheduled(); renderModal(); };
+  };
+  document.body.appendChild(modal);
+  modal.onclick = e => { if (e.target === modal) { modal.remove(); if (onDone) onDone(); } };
+  renderModal();
+}
+
 function home(activeTab = 'chats', showArchived = false, showRequests = false) {
   stop(); currentScreenName = 'home'; ensureRootHistoryAnchor(); applyTheme();
   let allChats = [], statusDocs = [], callLogs = [], searchTerm = '';
@@ -1888,8 +2066,9 @@ function home(activeTab = 'chats', showArchived = false, showRequests = false) {
       if (!valid.length) { ls.innerHTML = `<div class="empty">${esc(tr('noStatus'))}</div>`; return; }
       ls.innerHTML = valid.map(s => {
         const viewers = Array.isArray(s.viewedBy) ? s.viewedBy : [];
+        const stPhoto = (s.uid === me.uid ? profile.photo : '') || userProfilesCache[s.uid]?.photo || s.photo || '';
         return `<div class="row strow" data-id="${esc(s.id)}">
-          <div class="av ring">${avHtml(s.photo, s.userName)}</div>
+          <div class="av ring">${avHtml(stPhoto, s.userName)}</div>
           <div class="mid"><div class="t">${esc(s.userName || 'User')}</div><div class="s">${esc(s.text || '')}</div></div>
           ${s.uid === me.uid ? `<span class="hint" style="margin:0">👁 ${viewers.length}</span>` : ''}
         </div>`;
@@ -1927,8 +2106,9 @@ function home(activeTab = 'chats', showArchived = false, showRequests = false) {
         const dt = c.createdAt?.toDate?.();
         const tm = dt ? `${String(dt.getHours()).padStart(2, '0')}:${String(dt.getMinutes()).padStart(2, '0')}` : '';
         const isMissed = c.outcome === 'missed';
+        const callPhoto = userProfilesCache[c.peerUid]?.photo || '';
         return `<div class="row callrow" data-uid="${esc(c.peerUid)}" data-name="${esc(c.peerName)}" data-vid="${c.isVideo ? '1' : '0'}">
-          <div class="av">${esc((c.peerName || '?')[0]?.toUpperCase() || '?')}</div>
+          <div class="av">${avHtml(callPhoto, c.peerName)}</div>
           <div class="mid">
             <div class="t" style="color:${isMissed ? '#ef4444' : 'inherit'}">${esc(c.peerName || 'User')}</div>
             <div class="s" style="color:${isMissed ? '#ef4444' : 'var(--sub)'}">${c.direction === 'incoming' ? '↙' : '↗'} ${c.isVideo ? '📹 Video' : '📞 Audio'} • ${esc(c.outcome || '')} ${tm ? '• ' + tm : ''}</div>
@@ -1965,7 +2145,7 @@ function home(activeTab = 'chats', showArchived = false, showRequests = false) {
     if (archslot) {
       let bars = '';
       if (outboxCnt > 0 || schedCnt > 0) {
-        bars += `<div class="archbar" id="qinfo"><span>⏳ Pending Outbox: ${outboxCnt} • ⏰ Scheduled: ${schedCnt}</span><span>Tap to send</span></div>`;
+        bars += `<div class="archbar" id="qinfo"><span>⏳ Outbox: ${outboxCnt} • ⏰ Scheduled: ${schedCnt}</span><span>Manage</span></div>`;
       }
       if (showRequests) {
         bars += `<div class="archbar" id="reqtog"><span>← Back to Chats</span><span>Requests (${reqList.length})</span></div>`;
@@ -1976,7 +2156,7 @@ function home(activeTab = 'chats', showArchived = false, showRequests = false) {
       else if (archivedCount > 0 && !showRequests) bars += `<div class="archbar" id="archtog"><span>${esc(tr('archChats'))}</span><span>${archivedCount}</span></div>`;
       archslot.innerHTML = bars;
       const qi = document.getElementById('qinfo');
-      if (qi) qi.onclick = () => { flushOutboxAndScheduled(); renderBody(); };
+      if (qi) qi.onclick = () => openQueueManagerModal(renderBody);
       const rt = document.getElementById('reqtog');
       if (rt) rt.onclick = () => home('chats', false, !showRequests);
       const tog = document.getElementById('archtog');
@@ -2059,15 +2239,29 @@ function home(activeTab = 'chats', showArchived = false, showRequests = false) {
       renderBody();
     };
     const stSub = (k, q) => addSub(q.onSnapshot(snap => { stMap[k] = snap.docs.map(d => ({ id: d.id, ...d.data() })); stMerge(); }, () => stMerge()));
+    const loadStatusPhotos = () => statusDocs.forEach(s => {
+      if (s.uid && s.uid !== me.uid && !userProfilesCache[s.uid]) {
+        userProfilesCache[s.uid] = {};
+        db.collection('users').doc(s.uid).get().then(d => { if (d.exists) { userProfilesCache[s.uid] = d.data(); if (currentScreenName === 'home') renderBody(); } }).catch(() => {});
+      }
+    });
     stSub('b', db.collection('statuses').where('uid', '==', me.uid).limit(100));
     stSub('c', db.collection('statuses').where('allowedUids', 'array-contains', me.uid).limit(300));
+    setTimeout(loadStatusPhotos, 400);
     db.collection('statuses').where('uid', '==', me.uid).get().then(sn => sn.docs.forEach(d => { if ((d.data().expiresAt || 0) <= Date.now()) d.ref.delete().catch(() => {}); })).catch(() => {});
     return;
   }
 
   if (activeTab === 'calls') {
     addSub(db.collection('users').doc(me.uid).collection('callLogs').orderBy('createdAt', 'desc').limit(20).onSnapshot(snap => {
-      callLogs = snap.docs.map(d => ({ id: d.id, ...d.data() })); renderBody();
+      callLogs = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+      renderBody();
+      callLogs.forEach(c => {
+        if (c.peerUid && !userProfilesCache[c.peerUid]) {
+          userProfilesCache[c.peerUid] = {};
+          db.collection('users').doc(c.peerUid).get().then(d => { if (d.exists) { userProfilesCache[c.peerUid] = d.data(); if (currentScreenName === 'home') renderBody(); } }).catch(() => {});
+        }
+      });
     }, () => renderBody()));
     return;
   }
@@ -2099,7 +2293,14 @@ function newChat() {
     er.textContent = ''; ls.innerHTML = '';
     try {
       const u = await lookup(document.getElementById('q').value);
-      ls.innerHTML = `<div class="row" id="rr"><div class="av ${u.isBot ? 'botav' : ''}">${avHtml('', u.name, false, u.isBot)}</div><div><div class="t">${esc(u.name)}</div><div class="s">@${esc(u.username)}</div></div></div>`;
+      let uPhoto = '';
+      if (!u.isBot) {
+        try {
+          const uDoc = await db.collection('users').doc(u.uid).get();
+          if (uDoc.exists) { userProfilesCache[u.uid] = uDoc.data(); uPhoto = uDoc.data().photo || ''; }
+        } catch (e) {}
+      }
+      ls.innerHTML = `<div class="row" id="rr"><div class="av ${u.isBot ? 'botav' : ''}">${avHtml(uPhoto, u.name, false, u.isBot)}</div><div><div class="t">${esc(u.name)}</div><div class="s">@${esc(u.username)}</div></div></div>`;
       document.getElementById('rr').onclick = () => u.isBot ? chatView(`ai_${me.uid}`, AI_BOT_NAME, AI_BOT_ID) : showPublicProfile(u.uid, u.name);
     } catch (ex) { er.textContent = ex.message; }
   };
@@ -2222,17 +2423,30 @@ function openWallpaperModal(chatId, chatRef, currentWp) {
   modal.querySelector('#wpsv').onclick = async () => { if (chatRef) await chatRef.set({ wallpaperBy: { [me.uid]: { color: selColor || null } } }, { merge: true }).catch(() => {}); else localStorage.setItem(`amar_wp_${chatId}`, JSON.stringify({ color: selColor || null })); modal.remove(); };
 }
 
-function openMediaGalleryModal(chatTitleStr, docsList) {
-  const imgs = (docsList || []).map(d => d.data()).filter(m => !m.deleted && safeMedia(m.image));
+async function openMediaGalleryModal(chatTitleStr, chatRef, fallbackDocs) {
   const modal = document.createElement('div'); modal.className = 'modal';
   modal.innerHTML = `
     <div class="mbox">
-      <div class="mhead"><span>🖼 Media Gallery (${imgs.length})</span><button id="mgcl">✕</button></div>
-      <div class="mbody">${imgs.length ? `<div class="medgrid">${imgs.map(m => `<img src="${esc(safeMedia(m.image))}" data-cap="${esc(m.text || chatTitleStr)}" alt="">`).join('')}</div>` : '<div class="empty">No photos in this chat yet.</div>'}</div>
+      <div class="mhead"><span>🖼 Media Gallery</span><button id="mgcl">✕</button></div>
+      <div class="mbody" id="mgbody"><div class="empty">Loading media...</div></div>
     </div>`;
   document.body.appendChild(modal);
   modal.querySelector('#mgcl').onclick = () => modal.remove(); modal.onclick = e => { if (e.target === modal) modal.remove(); };
-  modal.querySelectorAll('.medgrid img').forEach(im => im.onclick = () => openLightbox(im.src, im.dataset.cap || '', false));
+
+  let docs = fallbackDocs || [];
+  if (chatRef) {
+    try {
+      const snap = await chatRef.collection('messages').orderBy('createdAt', 'desc').limit(250).get();
+      docs = snap.docs;
+    } catch (e) {}
+  }
+  const imgs = docs.map(d => d.data()).filter(m => !m.deleted && !(Array.isArray(m.hiddenFor) && m.hiddenFor.includes(me.uid)) && safeMedia(m.image));
+  const mgbody = modal.querySelector('#mgbody');
+  if (!mgbody) return;
+  mgbody.innerHTML = imgs.length
+    ? `<div class="medgrid">${imgs.map(m => `<img src="${esc(safeMedia(m.image))}" data-cap="${esc(m.text || chatTitleStr)}" alt="">`).join('')}</div>`
+    : '<div class="empty">No photos in this chat yet.</div>';
+  mgbody.querySelectorAll('.medgrid img').forEach(im => im.onclick = () => openLightbox(im.src, im.dataset.cap || '', false));
 }
 
 function openScheduleModal(textVal, onScheduled) {
@@ -2271,6 +2485,7 @@ function openPollModal(onCreatePoll) {
         <input type="text" class="plopt" placeholder="Option 1">
         <input type="text" class="plopt" placeholder="Option 2">
         <input type="text" class="plopt" placeholder="Option 3 (optional)">
+        <input type="text" class="plopt" placeholder="Option 4 (optional)">
         <button class="btn" id="plmk">Create Poll</button>
       </div>
     </div>`;
@@ -2321,7 +2536,7 @@ async function openForwardModal(msgList) {
   try {
     const snap = await db.collection('chats').where('members', 'array-contains', me.uid).limit(200).get();
     const fls = modal.querySelector('#fls');
-    fls.innerHTML = snap.docs.map(d => { const c = { id: d.id, ...d.data() }, t = chatTitle(c); return `<div class="row" data-id="${esc(c.id)}" data-t="${esc(t)}" data-oid="${esc(otherUid(c) || '')}"><div class="av">${avHtml('', t, c.isGroup)}</div><div class="mid"><div class="t">${esc(t)}</div></div></div>`; }).join('');
+    fls.innerHTML = snap.docs.map(d => { const c = { id: d.id, ...d.data() }, t = chatTitle(c), oid = otherUid(c), ph = c.isGroup ? (c.groupIcon || '') : (userProfilesCache[oid]?.photo || ''); return `<div class="row" data-id="${esc(c.id)}" data-t="${esc(t)}" data-oid="${esc(oid || '')}"><div class="av">${avHtml(ph, t, c.isGroup)}</div><div class="mid"><div class="t">${esc(t)}</div></div></div>`; }).join('');
     fls.querySelectorAll('.row').forEach(r => {
       r.onclick = async () => {
         const targetId = r.dataset.id, FV = firebase.firestore.FieldValue, target = snap.docs.find(x => x.id === targetId)?.data() || {}, hrs = target.disappearHours || 0;
@@ -2356,7 +2571,7 @@ async function prepareFreeMedia(blobOrDataUrl, kind) {
   return dataUrl;
 }
 
-/* ---------- CHAT VIEW ---------- */
+/* ---------- CHAT VIEW (COMBINED & UPGRADED) ---------- */
 function chatView(chatId, title, peerUid = null) {
   stop();
   const isAiChat = (peerUid === AI_BOT_ID) || String(chatId).startsWith('ai_');
@@ -2370,7 +2585,7 @@ function chatView(chatId, title, peerUid = null) {
 
   let aiMessages = isAiChat ? getAiHistory(me?.uid) : [];
   if (isAiChat && !aiMessages.length) {
-    aiMessages = [{ id: 'ai_welcome', senderId: AI_BOT_ID, senderName: AI_BOT_NAME, text: `👋 Hello ${myName().split(' ')[0]}! Ami **Amar AI** (created by **${APP_CREATOR}**). Summary, translation, search, ba jekono kichu jiggesh koro!`, createdAtMs: Date.now() }];
+    aiMessages = [{ id: 'ai_welcome', senderId: AI_BOT_ID, senderName: AI_BOT_NAME, text: `👋 Hello ${myName().split(' ')[0]}! Ami **Amar AI**. Summary, translation, search, ba jekono kichu jiggesh koro!`, createdAtMs: Date.now() }];
     saveAiHistory(me?.uid, aiMessages);
   }
 
@@ -2469,11 +2684,16 @@ function chatView(chatId, title, peerUid = null) {
     } else {
       const lastInc = [...lastDocs].reverse().map(d => d.data()).find(m => !m.deleted && m.senderId !== me.uid && m.text);
       const smarts = getSmartReplies(lastInc?.text || '');
-      qchips.innerHTML = `<button type="button" class="qchip" id="sumchip">📝 AI Summary</button>` + smarts.map(s => `<button type="button" class="qchip" data-send="${esc(s)}">${esc(s)}</button>`).join('');
+      qchips.innerHTML = `<button type="button" class="qchip" id="sumchip">📝 AI Summary</button><button type="button" class="qchip" id="aimentionchip">🤖 Ask @amar_ai</button>` + smarts.map(s => `<button type="button" class="qchip" data-send="${esc(s)}">${esc(s)}</button>`).join('');
       const sc = document.getElementById('sumchip');
       if (sc) sc.onclick = () => {
         const sum = buildChatSummary(lastDocs.map(d => d.data()));
         openLightbox(sum, `${document.getElementById('htitle')?.textContent || title} • Summary`, true);
+      };
+      const amc = document.getElementById('aimentionchip');
+      if (amc) amc.onclick = () => {
+        if (!tx.value.startsWith('@amar_ai ')) tx.value = '@amar_ai ' + tx.value;
+        tx.focus(); autosize();
       };
     }
     qchips.querySelectorAll('.qchip[data-send]').forEach(btn => {
@@ -2515,7 +2735,7 @@ function chatView(chatId, title, peerUid = null) {
     if (gi) gi.onclick = () => { menuEl.style.display = 'none'; groupInfoView(chatId); };
     const pl = document.getElementById('cm_poll');
     if (pl) pl.onclick = () => { menuEl.style.display = 'none'; openPollModal(async poll => { try { await send(null, null, null, null, poll); } catch (e) { toast(e.message); } }); };
-    document.getElementById('cm_gal').onclick = () => { menuEl.style.display = 'none'; openMediaGalleryModal(document.getElementById('htitle')?.textContent || title, lastDocs); };
+    document.getElementById('cm_gal').onclick = () => { menuEl.style.display = 'none'; openMediaGalleryModal(document.getElementById('htitle')?.textContent || title, chat, lastDocs); };
     document.getElementById('cm_sum').onclick = () => { menuEl.style.display = 'none'; openLightbox(buildChatSummary(lastDocs.map(d => d.data())), 'Chat Summary', true); };
     document.getElementById('cm_nick').onclick = () => {
       menuEl.style.display = 'none';
@@ -2689,14 +2909,19 @@ function chatView(chatId, title, peerUid = null) {
   };
 
   function refreshMentionPopup() {
-    if (!mentionpop || isAiChat || peerUid || !chatMeta.memberUsernames) { if (mentionpop) mentionpop.style.display = 'none'; return; }
+    if (!mentionpop || isAiChat || !chatMeta.memberUsernames) { if (mentionpop) mentionpop.style.display = 'none'; return; }
     const m = tx.value.slice(0, tx.selectionStart ?? tx.value.length).match(/@([a-z0-9_]*)$/i);
     if (!m) { mentionpop.style.display = 'none'; return; }
     const needle = m[1].toLowerCase();
-    const matches = Object.entries(chatMeta.memberUsernames).filter(([uid, un]) => uid !== me.uid && un && un.toLowerCase().includes(needle));
-    if (!matches.length) { mentionpop.style.display = 'none'; return; }
+    const candidates = [
+      ['amar_ai_bot', 'amar_ai', 'Amar AI (Assistant)'],
+      ...Object.entries(chatMeta.memberUsernames)
+        .filter(([uid, un]) => uid !== me.uid && un)
+        .map(([uid, un]) => [uid, un, chatMeta.memberNames?.[uid] || 'Member'])
+    ].filter(([, un]) => un.toLowerCase().includes(needle));
+    if (!candidates.length) { mentionpop.style.display = 'none'; return; }
     mentionpop.style.display = 'block';
-    mentionpop.innerHTML = matches.map(([uid, un]) => `<div class="row mpick" data-un="${esc(un)}" style="padding:8px 12px"><div class="mid"><div class="t">@${esc(un)}</div><div class="s">${esc(chatMeta.memberNames?.[uid] || 'Member')}</div></div></div>`).join('');
+    mentionpop.innerHTML = candidates.map(([, un, nm]) => `<div class="row mpick" data-un="${esc(un)}" style="padding:8px 12px"><div class="mid"><div class="t">@${esc(un)}</div><div class="s">${esc(nm)}</div></div></div>`).join('');
     mentionpop.querySelectorAll('.mpick').forEach(row => {
       row.onclick = () => {
         const pos = tx.selectionStart ?? tx.value.length, before = tx.value.slice(0, pos), after = tx.value.slice(pos);
@@ -2760,7 +2985,8 @@ function chatView(chatId, title, peerUid = null) {
       const m = d.data(); msgCache[d.id] = m;
       const mts = tsMs(m.createdAt) || m.createdAtMs || Date.now(), dl = dayLabel(mts);
       const sep = dl !== lastDay ? `<div class="daysep"><span>${esc(dl)}</span></div>` : ''; lastDay = dl;
-      const mine = m.senderId === me.uid, isBotMsg = m.senderId === AI_BOT_ID;
+      const isBotMsg = m.senderId === AI_BOT_ID || !!m.isBotReply;
+      const mine = m.senderId === me.uid && !isBotMsg;
       const dt = m.createdAt?.toDate ? m.createdAt.toDate() : (m.createdAtMs ? new Date(m.createdAtMs) : null);
       const tm = dt ? String(dt.getHours()).padStart(2, '0') + ':' + String(dt.getMinutes()).padStart(2, '0') : '';
       const isSel = selectedIds.has(d.id);
@@ -2775,10 +3001,12 @@ function chatView(chatId, title, peerUid = null) {
       let pollHtml = '';
       if (m.poll && Array.isArray(m.poll.options)) {
         const votesMap = m.poll.votes || {};
+        const totalVotes = Object.keys(votesMap).length;
         pollHtml = `<div class="pollbox"><b>📊 ${esc(m.poll.question)}</b>` + m.poll.options.map(opt => {
           const voters = Object.entries(votesMap).filter(([, v]) => v === opt.id);
           const iVoted = voters.some(([u]) => u === me.uid);
-          return `<div class="pollopt ${iVoted ? 'voted' : ''}" data-opt="${esc(opt.id)}"><span>${esc(opt.label)}</span><span>${voters.length}</span></div>`;
+          const pct = totalVotes ? Math.round((voters.length / totalVotes) * 100) : 0;
+          return `<div class="pollopt ${iVoted ? 'voted' : ''}" data-opt="${esc(opt.id)}"><span>${esc(opt.label)}</span><span>${voters.length}${totalVotes ? ` (${pct}%)` : ''}</span></div>`;
         }).join('') + `</div>`;
       }
 
@@ -2796,7 +3024,7 @@ function chatView(chatId, title, peerUid = null) {
       } else if (mine && isAiChat) tick = '<span class="tick seen" title="Seen">✓✓</span>';
 
       return `${sep}<div class="b ${mine ? 'me' : ''} ${isBotMsg ? 'botmsg' : ''} ${isSel ? 'selected' : ''} ${openId === d.id ? 'open' : ''}" data-id="${esc(d.id)}">
-        ${mine ? '' : `<div class="n">${esc(m.senderName)}</div>`}
+        ${mine ? '' : `<div class="n ${!isBotMsg && m.senderId ? 'senderprof' : ''}" ${!isBotMsg && m.senderId ? `data-uid="${esc(m.senderId)}" data-nm="${esc(m.senderName || 'User')}" style="cursor:pointer;text-decoration:underline"` : ''}>${esc(isBotMsg ? AI_BOT_NAME : m.senderName)}</div>`}
         ${m.forwarded ? '<div class="fwd">↪ Forwarded</div>' : ''}
         ${m.replyTo ? `<div class="qbox"><b>${esc(m.replyTo.senderName || 'User')}</b>${esc(m.replyTo.preview || '')}</div>` : ''}
         ${safeImg ? `<img class="zoomimg" loading="lazy" src="${esc(safeImg)}" data-cap="${esc(m.text || '')}">` : ''}
@@ -2814,7 +3042,7 @@ function chatView(chatId, title, peerUid = null) {
           ${!isAiChat ? `<span class="mfwd">↪ ${esc(tr('forwardBtn'))}</span>` : ''}
           ${!isAiChat && mine && m.text ? `<span class="medit">✎ ${esc(tr('editBtn'))}</span>` : ''}
           <span class="mdel">🗑 ${esc(tr('deleteBtn'))}</span>
-          ${!isAiChat && mine ? `<span class="mdela" style="color:#ef4444">All</span>` : ''}
+          ${!isAiChat && (mine || isBotMsg) ? `<span class="mdela" style="color:#ef4444">All</span>` : ''}
           ${statusText ? `<span style="color:var(--sub);cursor:default">• ${statusText}</span>` : ''}
         </div>
       </div>`;
@@ -2864,6 +3092,7 @@ function chatView(chatId, title, peerUid = null) {
     });
 
     ms.querySelectorAll('.zoomimg').forEach(img => { img.onclick = e => { e.stopPropagation(); openLightbox(img.src, img.dataset.cap || '', false); }; });
+    ms.querySelectorAll('.senderprof').forEach(el => { el.onclick = e => { e.stopPropagation(); showPublicProfile(el.dataset.uid, el.dataset.nm || 'User'); }; });
 
     const toggleSelect = id => {
       if (selectedIds.has(id)) selectedIds.delete(id); else selectedIds.add(id);
@@ -2946,15 +3175,21 @@ function chatView(chatId, title, peerUid = null) {
     renderMessages();
   } else {
     let markedUpTo = 0;
+    const localMarkedMsgs = new Set();
     const markRead = () => {
       if (document.hidden) return;
       const seenOk = profile?.privacy?.readReceipts !== false, FVr = firebase.firestore.FieldValue, nowMs = Date.now();
       lastDocs.forEach(ds => {
         const m = ds.data(); if (m.senderId === me.uid || m.deleted) return;
+        const markKey = `${ds.id}_${seenOk ? 1 : 0}`;
+        if (localMarkedMsgs.has(markKey)) return;
         const u = {};
         if (!(m.deliveredTo || []).includes(me.uid)) u.deliveredTo = FVr.arrayUnion(me.uid);
         if (seenOk && !(m.seenBy || []).includes(me.uid)) u.seenBy = FVr.arrayUnion(me.uid);
-        if (Object.keys(u).length) ds.ref.set(u, { merge: true }).catch(() => {});
+        if (Object.keys(u).length) {
+          localMarkedMsgs.add(markKey);
+          ds.ref.set(u, { merge: true }).catch(() => localMarkedMsgs.delete(markKey));
+        }
       });
       const newest = lastDocs.reduce((mx, ds) => { const m = ds.data(); return m.senderId !== me.uid ? Math.max(mx, m.createdAtMs || tsMs(m.createdAt)) : mx; }, 0);
       if (!(chatMeta.unread?.[me.uid] > 0) && newest <= markedUpTo) return;
@@ -3015,10 +3250,11 @@ function chatView(chatId, title, peerUid = null) {
       aiMessages.push(userMsg); saveAiHistory(me?.uid, aiMessages); renderMessages();
       typingNames = [AI_BOT_NAME]; updateHeaderSub();
       try {
-        const localReply = isCreatorQuery(text) ? generateFreeAiReply(text, myName()) : null;
-        const answer = localReply || ((typeof window.amarAiGenerate === 'function')
-          ? await window.amarAiGenerate(aiMessages.filter(m => m.senderId === me.uid || m.senderId === AI_BOT_ID).slice(-17).map(m => ({ role: m.senderId === AI_BOT_ID ? 'model' : 'user', text: m.text || '' })), text, myName())
-          : await superAiReply(text, myName()));
+        const answer = isOwnerQuestion(text)
+          ? getOwnerAnswer()
+          : (typeof window.amarAiGenerate === 'function')
+            ? await window.amarAiGenerate(aiMessages.filter(m => m.senderId === me.uid || m.senderId === AI_BOT_ID).slice(-17).map(m => ({ role: m.senderId === AI_BOT_ID ? 'model' : 'user', text: m.text || '' })), text, myName())
+            : await superAiReply(text, myName());
         aiMessages.push({ id: 'b_' + Date.now() + '_' + Math.random().toString(36).slice(2, 6), senderId: AI_BOT_ID, senderName: AI_BOT_NAME, text: answer || 'Could not generate reply.', createdAtMs: Date.now() });
         saveAiHistory(me?.uid, aiMessages);
       } catch (aiError) {
@@ -3057,8 +3293,35 @@ function chatView(chatId, title, peerUid = null) {
     sendBatch.set(chat, patch, { merge: true });
     try { await sendBatch.commit(); }
     catch (e) { throw new Error(e.code === 'permission-denied' ? 'Message pathano gelo na (permission nei / block)' : e.message); }
+
+    // Inline @amar_ai / @ai mention reply inside normal 1-on-1 or group chats
+    const aiMatch = text ? String(text).match(/(?:^|\s)@(?:amar_ai|ai)\b\s*(.*)$/i) : null;
+    if (aiMatch) {
+      const promptForAi = (aiMatch[1] || '').trim() || String(text).replace(/@(?:amar_ai|ai)\b/gi, '').trim();
+      if (promptForAi) {
+        try {
+          const aiAns = isOwnerQuestion(promptForAi)
+            ? getOwnerAnswer()
+            : (typeof window.amarAiGenerate === 'function')
+              ? await window.amarAiGenerate([], promptForAi, myName())
+              : await superAiReply(promptForAi, myName());
+          if (aiAns) {
+            await chat.collection('messages').add({
+              senderId: me.uid, senderName: AI_BOT_NAME, isBotReply: true,
+              text: `🤖 ${aiAns}`,
+              replyTo: { id: 'mention', senderName: myName(), preview: promptForAi.slice(0, 80) },
+              reactions: {}, hiddenFor: [],
+              expiresAt: (chatMeta.disappearHours || 0) > 0 ? Date.now() + chatMeta.disappearHours * 3600000 : null,
+              edited: false, deleted: false, deliveredTo: [me.uid], seenBy: [me.uid],
+              createdAtMs: Date.now() + 1, createdAt: FV.serverTimestamp()
+            });
+          }
+        } catch (aiErr) {}
+      }
+    }
   }
 
+  // Voice-to-Text (Speech Recognition)
   const sttBtn = document.getElementById('sttbtn');
   if (sttBtn) {
     sttBtn.onclick = () => {
@@ -3081,6 +3344,7 @@ function chatView(chatId, title, peerUid = null) {
     };
   }
 
+  // Schedule Message button
   const schedBtn = document.getElementById('schedbtn');
   if (schedBtn) {
     schedBtn.onclick = () => {
@@ -3168,8 +3432,12 @@ function shrink(file, max = 300, quality = 0.4) {
       const s = Math.min(1, max / Math.max(img.width, img.height)), c = document.createElement('canvas');
       c.width = Math.round(img.width * s); c.height = Math.round(img.height * s);
       const ctx = c.getContext('2d'); if (!ctx) return rej(new Error('Image process failed'));
-      ctx.fillStyle = '#fff'; ctx.fillRect(0, 0, c.width, c.height); ctx.drawImage(img, 0, 0, c.width, c.height);
-      res({ dataUrl: c.toDataURL('image/jpeg', quality) });
+      ctx.fillStyle = '#ffffff';
+      ctx.fillRect(0, 0, c.width, c.height);
+      ctx.drawImage(img, 0, 0, c.width, c.height);
+      const dataUrl = c.toDataURL('image/jpeg', quality);
+      if (!dataUrl || dataUrl.length > MAX_FREE_MEDIA_CHARS) return rej(new Error('Chobi beshi boro. Chhoto image select korun.'));
+      res({ dataUrl });
     };
     img.onerror = () => { URL.revokeObjectURL(objUrl); rej(new Error('Image load failed')); };
     img.src = objUrl;
