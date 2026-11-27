@@ -5,7 +5,8 @@ import { initializeAppCheck, ReCaptchaEnterpriseProvider } from 'https://www.gst
 
 // Paste your reCAPTCHA Enterprise SITE key here (not a Gemini API key).
 const RECAPTCHA_SITE_KEY = '6LfNMjQuAAAAABIBaKJQNy4SrTDrCpf8V4OLf8z6';
-const MODEL_NAME = 'gemini-4-hydrogen';
+// Tried in this order. Each model has its own free limit.
+const MODEL_NAMES = ['gemini-3.5-flash-lite', 'gemini-3.8-flash', 'gemini-4-hydrogen'];
 
 if (RECAPTCHA_SITE_KEY.startsWith('PASTE_')) {
   console.warn('Amar AI: reCAPTCHA site key is not set. Using built-in replies.');
@@ -25,10 +26,10 @@ if (RECAPTCHA_SITE_KEY.startsWith('PASTE_')) {
   });
 
   const ai = getAI(app, { backend: new GoogleAIBackend() });
-  const model = getGenerativeModel(ai, {
-    model: MODEL_NAME,
+  const models = MODEL_NAMES.map(name => getGenerativeModel(ai, {
+    model: name,
     systemInstruction: 'You are Amar AI, a helpful assistant inside the Amar Chat app. Reply in the same language and script the user writes in (Banglish, Bangla or English). Be clear and short. If you are not sure about something, say so.'
-  });
+  }));
 
   window.amarAiGenerate = async (history, text, userName) => {
     // The conversation must start with the user and take turns.
@@ -42,8 +43,19 @@ if (RECAPTCHA_SITE_KEY.startsWith('PASTE_')) {
     if (!contents.length || contents[contents.length - 1].role !== 'user') {
       contents.push({ role: 'user', parts: [{ text }] });
     }
-    const result = await model.generateContent({ contents });
-    return result.response.text();
+    let lastError, limitHit = false;
+    for (const model of models) {
+      try {
+        const result = await model.generateContent({ contents });
+        return result.response.text();
+      } catch (e) {
+        lastError = e;
+        if (String(e && e.message).includes('429')) limitHit = true;
+        console.warn('Amar AI model failed:', model.model, e && e.message);
+      }
+    }
+    if (limitHit) return 'AI er free limit ekhon shesh. Kichukkhon por abar try korun. Ajker limit shesh hole porer din abar cholbe.';
+    throw lastError;
   };
   window.amarAiReady = true;
 }
