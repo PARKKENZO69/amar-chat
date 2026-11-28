@@ -455,7 +455,13 @@ const firebaseConfig = {
   appId: "1:125656305932:web:c3fabc5da8929a7874f929"
 };
 
-const CUSTOM_TURN_SERVERS = [];
+const CUSTOM_TURN_SERVERS = [
+  { urls: 'stun:stun.relay.metered.ca:80' },
+  { urls: 'turn:global.relay.metered.ca:80', username: 'a6c75519e3df4e6f928638ba', credential: 'LVoPIpNOIagTcI1K' },
+  { urls: 'turn:global.relay.metered.ca:80?transport=tcp', username: 'a6c75519e3df4e6f928638ba', credential: 'LVoPIpNOIagTcI1K' },
+  { urls: 'turn:global.relay.metered.ca:443', username: 'a6c75519e3df4e6f928638ba', credential: 'LVoPIpNOIagTcI1K' },
+  { urls: 'turns:global.relay.metered.ca:443?transport=tcp', username: 'a6c75519e3df4e6f928638ba', credential: 'LVoPIpNOIagTcI1K' },
+];
 
 /* ---------- PROJECT HEALTH CHECK & SELF-CONTAINED PWA FALLBACKS ---------- */
 (function bootstrapProjectAssets() {
@@ -568,11 +574,6 @@ async function getRtcCfg(force = false) {
   if (Array.isArray(CUSTOM_TURN_SERVERS) && CUSTOM_TURN_SERVERS.length) {
     ice = [...ice, ...CUSTOM_TURN_SERVERS];
   }
-  try {
-    const result = await functions.httpsCallable('getTurnCredentials')({});
-    const list = result?.data?.iceServers;
-    if (Array.isArray(list) && list.length) ice = [...ice, ...list];
-  } catch (e) {}
   rtcCfgCache = { iceServers: ice, iceCandidatePoolSize: 8, bundlePolicy: 'max-bundle', rtcpMuxPolicy: 'require' };
   rtcCfgAt = Date.now();
   return rtcCfgCache;
