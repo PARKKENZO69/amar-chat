@@ -752,7 +752,7 @@ const isSoundEnabled = () => profile?.soundEnabled !== false;
 const UN_RE = /^[a-z0-9_]{3,20}$/;
 const normUn = s => String(s || '').trim().toLowerCase().replace(/^@/, '');
 const UN_HELP = 'Username: 3-20 chars (a-z, 0-9, _).';
-const MEDIA_OK = /^(data:(image\/(?!svg\+xml)|audio\/|video\/webm)[a-z0-9.+-]+(;[^;,]+)*;base64,|https:\/\/[^\s"'<>]+)$/i;
+const MEDIA_OK = /^(data:(image\/(?!svg\+xml)[a-z0-9.+-]+|audio\/[a-z0-9.+-]+|video\/webm)(;[^;,]+)*;base64,[a-z0-9+\/=]+|https:\/\/[^\s"'<>]+)$/i;
 const safeMedia = u => {
   if (typeof u !== 'string') return '';
   const trimmed = u.trim();
@@ -812,42 +812,6 @@ async function uploadProfilePhoto(dataUrl, onProgress = () => {}) {
   if (!me || !me.uid) throw new Error('You are signed out. Please sign in again.');
   if (typeof dataUrl !== 'string' || !dataUrl.startsWith('data:image/jpeg;base64,')) {
     throw new Error('The selected image could not be prepared. Please choose another JPG, PNG or WEBP image.');
-  }
-
-  if (firebase.storage && storage) {
-    try {
-      const path = `users/${me.uid}/profile/avatar_${Date.now()}.jpg`;
-      const ref = storage.ref().child(path);
-      const metadata = {
-        contentType: 'image/jpeg',
-        cacheControl: 'public,max-age=3600',
-        customMetadata: { ownerUid: me.uid }
-      };
-      const task = ref.putString(dataUrl, 'data_url', metadata);
-      const snapshot = await new Promise((resolve, reject) => {
-        let settled = false;
-        const timer = setTimeout(() => {
-          if (!settled) {
-            settled = true;
-            try { task.cancel(); } catch (_) {}
-            reject(new Error('storage/timeout'));
-          }
-        }, 9000);
-
-        task.on('state_changed',
-          snap => {
-            const pct = snap.totalBytes ? Math.round((snap.bytesTransferred / snap.totalBytes) * 100) : 0;
-            onProgress(pct);
-          },
-          err => { if (!settled) { settled = true; clearTimeout(timer); reject(err); } },
-          () => { if (!settled) { settled = true; clearTimeout(timer); resolve(task.snapshot); } }
-        );
-      });
-      onProgress(100);
-      return await snapshot.ref.getDownloadURL();
-    } catch (err) {
-      console.warn('Storage avatar fallback to Firestore avatar:', err?.code || err?.message);
-    }
   }
 
   let compact = await shrinkDataUrl(dataUrl, 240, 0.62);
@@ -3959,6 +3923,7 @@ function chatView(chatId, title, peerUid = null) {
     try {
       await directSendToFirestore(chatId, payload, { members: chatMeta.members || [me.uid, peerUid].filter(Boolean), disappearHours: chatMeta.disappearHours || 0 });
     } catch (e) {
+      if (e && e.code === 'permission-denied') return toast('Pathano gelo na: Firebase Rules block korche');
       const list = getOutbox();
       list.push({ id: 'ob_' + Date.now(), chatId, payload, chatMetaSnapshot: { members: chatMeta.members || [me.uid, peerUid].filter(Boolean), disappearHours: chatMeta.disappearHours || 0 } });
       if (saveOutbox(list)) toast('Network issue — queued in Outbox');
@@ -4008,16 +3973,17 @@ function chatView(chatId, title, peerUid = null) {
         const mimeTypes = ['audio/webm;codecs=opus', 'audio/webm', 'audio/mp4', 'audio/ogg'];
         const chosenMime = mimeTypes.find(t => { try { return MediaRecorder.isTypeSupported(t); } catch (e) { return false; } }) || '';
         activeAudioMime = chosenMime || 'audio/webm';
-        rec = chosenMime ? new MediaRecorder(recStream, { mimeType: chosenMime }) : new MediaRecorder(recStream);
+        rec = new MediaRecorder(recStream, chosenMime ? { mimeType: chosenMime, audioBitsPerSecond: 32000 } : { audioBitsPerSecond: 32000 });
         rec.ondataavailable = e => { if (e.data && e.data.size > 0) recChunks.push(e.data); };
         rec.onstop = async () => {
           const wasDiscarded = discardRec, chunks = [...recChunks], mimeType = rec?.mimeType || activeAudioMime || 'audio/webm';
           cleanupRec();
           if (wasDiscarded || !chunks.length) return;
           try {
-            const blob = new Blob(chunks, { type: mimeType });
-            const audioData = await prepareFreeMedia(blob, 'voice', mimeType);
-            await send({ audio: audioData, audioMime: mimeType });
+            const cleanType = mimeType.split(';')[0] || 'audio/webm';
+            const blob = new Blob(chunks, { type: cleanType });
+            const audioData = await prepareFreeMedia(blob, 'voice', cleanType);
+            await send({ audio: audioData, audioMime: cleanType });
           } catch (ex) { toast(ex.message); }
         };
         rec.start(250); recbar.classList.add('on');
